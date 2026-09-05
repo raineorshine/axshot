@@ -123,6 +123,19 @@ own Screen Recording grant — then send Escape:
 This is the only way to check hint placement and density, and it is worth doing after any change to
 the filter.
 
+Anything smaller than the overlay — the corner thumbnail, a badge, a bracket — does not survive a
+whole screen shrunk to fit. Capture the screen whole and crop afterwards rather than guessing a
+`-R` rectangle, and remember the crop is in *pixels* while the app draws in points, so on a Retina
+display the offsets are twice the coordinates the code uses:
+
+    screencapture -x -o /tmp/screen.png
+    magick /tmp/screen.png -crop 700x520+2240+1392 +repage -resize 200% /tmp/corner.png
+
+Timing is the other half of it. Something that shows for a few seconds and then animates away has to
+be photographed at three moments — up, mid-animation, gone — and appending the crops side by side
+(`magick a.png b.png c.png +append`) is what makes the sequence one thing to look at rather than
+three.
+
 ## Failures that are the environment, not the code
 
 Each of these cost time in the session that built the tool.
