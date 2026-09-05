@@ -139,8 +139,8 @@ nothing but the delay.
 ### 7. Correct the title if the ship did not land
 
 The push in step 5 is what counts as shipped, whether or not step 6 could fast-forward or install.
-If it succeeded, the `🚀 ` from step 0 stands until the ship is reported, and comes off the moment the
-session does anything else — the prefix is what the session is doing now, not what it last did. If
+If it succeeded, the `🚀 ` from step 0 stays — through the report and after it, until the session
+starts something else and that stage's prefix replaces it. Never clear it to leave a bare title. If
 the push failed, or the ship was abandoned before it, put the title back to the prefix that is true
 now (`📦 ` for a tested branch, none otherwise). Do not report this step.
 

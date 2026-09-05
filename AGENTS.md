@@ -49,9 +49,10 @@ from there through the lock, which refuses while another session is driving the 
 
 A lifecycle prefix on the session title says what a session is doing while it is doing it, so the
 sidebar answers "which chat is holding the lock" without opening any of them. One prefix at a time,
-replaced rather than stacked, and never reported in the response. It is a present tense: a session
-that lands its ship and carries on with something else drops the prefix rather than wearing `🚀 `
-through the next task.
+replaced rather than stacked, and never reported in the response. Every title carries one: a title
+without a prefix says nothing about the session, and the sidebar cannot tell it from a chat that
+never had a stage at all. A prefix comes off only when another replaces it, so a session that has
+nothing left to do keeps the one for the last stage it reached.
 
 | | |
 |---|---|
@@ -59,7 +60,7 @@ through the next task.
 | `🔓 ` | about to take the lock, or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
 | `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
-| `🚀 ` | shipping |
+| `🚀 ` | shipping, and shipped — it stays until the session starts something else |
 | `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a hands-on look |
 | `🪦 ` | dead end — kept for the findings, not to resume |
 | `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
