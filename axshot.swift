@@ -49,10 +49,13 @@
 // corner brackets mark it, and Return takes the shot -- Preview's crop, without the grid. The
 // region comes from a tree the app describes rather than from a rectangle that was dragged, so the
 // one thing worth seeing before the capture is what the tree actually handed over; Delete goes back
-// to the hints and Escape cancels. Command-C ends the session the other way: the held region's
-// text goes to the clipboard and no picture is taken, since the tree that gave the box has the
-// words in it too and a screenshot of a paragraph is a poor way to carry the paragraph. The confirmation restarts the session deadline, which is what
-// keeps the tap from being timed out mid-decision.
+// to the hints and Escape cancels. Command-Return takes the shot to the clipboard instead of to a
+// file, whichever hotkey opened the session: which of the two a region wants is often only clear
+// once it is held and masked, and that is a keystroke away rather than a cancel and a re-press.
+// Command-C ends the session the other way again: the held region's text goes to the clipboard and
+// no picture is taken, since the tree that gave the box has the words in it too and a screenshot of
+// a paragraph is a poor way to carry the paragraph. The confirmation restarts the session deadline,
+// which is what
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
 // lettered is nearly right: Left and Right step across the tree in document order -- to the next
@@ -540,6 +543,9 @@ final class Session {
   var typed = ""
   /// The region a hint selected, held while the mask is up and the shutter waits for Return.
   var held: Candidate?
+  /// Set when the shutter was fired with Command held, which sends this one shot to the clipboard
+  /// whichever hotkey started the session.
+  var toClipboard = false
   /// Where the held region sits in the candidate list, which is what the arrow keys move through.
   var heldIndex: Int?
   /// The indices left behind by each Up, so Down can walk back into the region it came from. An
@@ -558,15 +564,20 @@ final class Session {
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     if keyCode == 53 { cancelled = true; CFRunLoopStop(CFRunLoopGetCurrent()); return }  // escape
-    // Command-C copies the held region's text instead of photographing it. Every other chord is
-    // swallowed rather than acted on: the tap reports "c" whether or not Command was down with it,
-    // and an unfiltered Command-C would otherwise be typed at the hints as a plain letter.
+    // The two chords that end a hold, and nothing else: every other chord under Command is
+    // swallowed rather than acted on, since the tap reports "c" whether or not Command was down
+    // with it and an unfiltered Command-C would otherwise be typed at the hints as a plain letter.
     if event.flags.contains(.maskCommand) {
-      if keyCode == 8, held != nil {  // c
-        copying = true
-        chosen = held
-        CFRunLoopStop(CFRunLoopGetCurrent())
+      guard let region = held else { return }
+      switch keyCode {
+      case 8: copying = true  // c, the words rather than a picture of them
+      // Command on the shutter sends the shot to the clipboard whichever hotkey opened the session,
+      // so where it lands is decided with the region on screen rather than back at the hotkey.
+      case 36, 76: toClipboard = true  // return, keypad enter
+      default: return
       }
+      chosen = region
+      CFRunLoopStop(CFRunLoopGetCurrent())
       return
     }
     if held != nil {
@@ -1039,7 +1050,8 @@ func runSession(_ options: Options) -> Outcome {
     return Outcome(code: 11, line: "app=\(name) cancelled=true walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
   let box = chosen.rect
-  let path = options.destination.resolve()
+  let destination: Destination = session.toClipboard ? .clipboard : options.destination
+  let path = destination.resolve()
   guard capture(box, to: path) else {
     let hint = CGPreflightScreenCaptureAccess() ? "" : " screen_recording=false"
     return Outcome(code: 12, line: "app=\(name) capture=failed\(hint) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
