@@ -9,7 +9,9 @@ captures the one whose hint you type. The region snaps to a real element instead
 pointer happened to stop.
 
     ./build.sh
-    open Axshot.app
+
+`build.sh` compiles, signs, and installs `/Applications/Axshot.app`, relaunching it if it was
+already running. `./build.sh --no-install` stops before that.
 
 It lives in the menu bar with two global hotkeys, alongside the pair macOS uses for the same two
 things:

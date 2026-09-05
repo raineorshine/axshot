@@ -14,6 +14,10 @@ file does not repeat it.
 - [docs/testing.md](docs/testing.md) — driving the app with no human at the keyboard, and the
   environment failures that look like product bugs.
 
+Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
+mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
+about to do, before doing it.
+
 ## Layout
 
 | | |
@@ -21,9 +25,29 @@ file does not repeat it.
 | `axshot.swift` | everything: walk, filter, overlay, hotkeys, settings, CLI |
 | `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot` |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
+| `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
 
 The same binary is the app when launched with no arguments and a CLI when given any. Build output
-(`Axshot.app/`, `bin/`) is generated and ignored.
+(`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
+
+There is one installed app, `/Applications/Axshot.app`, and the permission grants belong to its
+signature rather than its path — so any build signed with the same certificate satisfies them
+wherever it sits. What is genuinely single is the running instance, which owns the global hotkeys,
+and the login item, which names one bundle path. `build.sh` compiles inside the checkout and installs
+from there through the lock, which refuses while another session is driving the app.
+
+## Session titles
+
+A lifecycle prefix on the session title says what a session is doing while it is doing it, so the
+sidebar answers "which chat is holding the lock" without opening any of them. One prefix at a time,
+replaced rather than stacked, and never reported in the response.
+
+| | |
+|---|---|
+| `🔓 ` | about to take the lock, or just released it |
+| `🔒 ` | holding the lock; the installed app is this branch's build |
+| `📦 ` | tested and worth shipping without re-testing |
+| `🚀 ` | shipping |
 
 ## Settled decisions
 

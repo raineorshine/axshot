@@ -1,6 +1,10 @@
 #!/bin/sh
 # Build axshot.swift into Axshot.app, signed with the local identity so the permission grants
-# survive the rebuild.
+# survive the rebuild, then install it as /Applications/Axshot.app.
+#
+# The bundle is built inside the checkout and installed from there, so a worktree compiles without
+# touching the app anyone is using. The install goes through the test lock, which refuses while
+# another session is driving the installed app. --no-install stops before that step.
 #
 # The app is a menu bar accessory (LSUIElement) holding two global hotkeys. The same binary is the
 # command line tool when it is given arguments, so bin/axshot links to it for --dump.
@@ -76,3 +80,6 @@ mkdir -p "$HERE/bin"
 ln -sf "$APP/Contents/MacOS/axshot" "$HERE/bin/axshot"
 
 printf 'built %s (signed by %s)\n' "$APP" "$IDENTITY"
+
+[ "${1:-}" = "--no-install" ] && exit 0
+"$HERE/scripts/axshot-test-lock.sh" install "$APP"

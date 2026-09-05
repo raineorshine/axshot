@@ -3,10 +3,14 @@
 Axshot is a hotkey, an overlay and a screenshot — all of which sound like they need someone at the
 keyboard. They do not. What follows is enough to exercise every path from a shell.
 
+The `test` skill is the procedure, including the mutex over the installed app; this is the mechanics
+it calls for.
+
 ## The paths that need no interaction
 
-- `axshot --dump` walks and filters and prints, without drawing anything. This is how the region
-  filter is tuned, and it is the only path that does not touch Screen Recording.
+- `axshot --dump` walks and filters and prints, without drawing anything and without touching the
+  installed app. This is how the region filter is tuned, it needs no lock, and it is the only path
+  that does not touch Screen Recording.
 - `axshot --pid 1` runs the permission checks and exits at "no target app". Useful as a permission
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.
