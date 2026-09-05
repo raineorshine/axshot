@@ -152,6 +152,25 @@ from rewriting the save folder. Close it with `first button of window "Axshot" w
 "AXCloseButton"`, and name the window rather than numbering it: an open panel becomes `window 1`, so
 a retry aimed there reopens the picker it was meant to dismiss.
 
+Stage what the window should be *showing* from the shell; drive only the buttons. It is built once
+and kept, so a `defaults write` does not appear by reopening it — quit the app, write the key, and
+relaunch, and the window comes up on the state you wanted:
+
+    defaults write com.raine.axshot saveDirectory -string /private/var/tmp
+
+Getting there by driving `Choose…` instead is the worst of both. The panel is modal, it holds the
+keyboard for as long as it is up, and typing into it obeys the rule above about keys going wherever
+is frontmost — which, since an open panel does not pin the machine's focus, can be the user's own
+window. Stage the state, then click the named button to test the *action*.
+
+What a control is showing is a shell question too, and a cheaper one than a screenshot:
+
+    osascript -e 'tell application "System Events" to tell process "Axshot" to get {name, enabled, position, size} of buttons of window "Axshot"'
+
+`enabled` is the assertion for a control that dims itself rather than hiding. `position` and `size`
+are the assertion that a row of them still fits: the stack's insets leave the window width less
+44pt, and a row that overruns that is not something a screenshot makes obvious.
+
 An empty window list is how "the install put no settings window on screen" gets asserted — the app
 opens one only when a permission is missing or a hotkey was refused. It is also what a locked screen
 reports for a window that is there, so it is a pass only on a machine that is awake.
