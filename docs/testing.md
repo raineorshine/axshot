@@ -30,6 +30,15 @@ the real path through the running app rather than the CLI.
 Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,
 and a key sent early is delivered to the target app instead.
 
+Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
+osascript that was meant to drive it, and the session then ends on its own deadline. That looks
+exactly like a real Escape — `cancelled=true` — and the only thing telling them apart is
+`total_ms`, which lands on the deadline rather than on when the key was sent.
+
+A hotkey press that does not land is silent: no overlay appears and the session never starts. Look
+for the overlay before sending hints rather than assuming the chord arrived, and send it again if it
+did not.
+
 ## Driving the menu bar item and the settings window
 
 The status item and its menu are reachable as `menu bar 2` — `menu bar 1` is the app's own menu bar,

@@ -142,7 +142,12 @@ Release first, then follow the `ship` skill.
 ## Hazards
 
 - **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
-  seconds and Escape cancels, but do not start one and walk away.
+  seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
+  not start one and walk away.
+- **`./build.sh` installs unless told `--no-install`.** Running it before the acquire puts an
+  untested build in the live slot and makes the snapshot a copy of your own build, so release
+  restores that rather than the app the user had. Take the lock first, even for a build you only
+  meant to compile.
 - **A capture takes whatever is frontmost.** Activate the app you mean, or you will measure the
   wrong window and conclude the filter is broken.
 - **Never change the bundle identifier or the signing certificate to make a test pass.** Either
