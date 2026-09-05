@@ -49,7 +49,9 @@
 // corner brackets mark it, and Return takes the shot -- Preview's crop, without the grid. The
 // region comes from a tree the app describes rather than from a rectangle that was dragged, so the
 // one thing worth seeing before the capture is what the tree actually handed over; Delete goes back
-// to the hints and Escape cancels. The confirmation restarts the session deadline, which is what
+// to the hints and Escape cancels. Command-C ends the session the other way: the held region's
+// text goes to the clipboard and no picture is taken, since the tree that gave the box has the
+// words in it too and a screenshot of a paragraph is a poor way to carry the paragraph. The confirmation restarts the session deadline, which is what
 // keeps the tap from being timed out mid-decision.
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
@@ -103,8 +105,8 @@
 // rather than the terminal that launched it and one pair of grants serves both the app and the
 // shell. The app bundle is already its own responsible process and does not.
 //
-// Exit codes (command line only): 0 captured, 2 not trusted, 3 no target app, 4 no candidate
-// regions, 6 no window, 11 cancelled, 12 capture failed. A capture that failed for want of Screen
+// Exit codes (command line only): 0 captured or copied, 2 not trusted, 3 no target app, 4 no
+// candidate regions, 6 no window, 11 cancelled, 12 capture failed, 13 nothing to copy. A capture that failed for want of Screen
 // Recording says screen_recording=false on that line.
 
 import AppKit
@@ -272,6 +274,9 @@ func attribute(_ element: AXUIElement, _ name: String) -> AnyObject? {
 // MARK: - Candidates
 
 struct Candidate {
+  /// Kept so the copy key can read the region's text out of the tree it came from. The walk holds
+  /// the element anyway; letting go of it would mean walking again to find it.
+  let element: AXUIElement
   let role: String
   let subrole: String
   let label: String
@@ -328,12 +333,63 @@ final class Walk {
         // anything below it -- which is what keeps a long conversation from being walked in full.
         if options.prune { return }
       } else if visible.width >= options.minSize && visible.height >= options.minSize {
-        found.append(Candidate(role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count))
+        found.append(Candidate(element: element, role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count))
       }
     }
 
     for child in info.children { run(child, depth: depth + 1) }
   }
+}
+
+/// The text of a held region, read out of the tree rather than off the pixels, and only when the
+/// copy key asks: the walk that drew the hints keeps one label per element, which is whatever the
+/// element calls itself, and this is what its descendants actually say.
+///
+/// Text-bearing elements answer for their whole subtree -- a text area's value already spells out
+/// what its children hold -- and everything else is recursed into, so a run of nested containers
+/// contributes its parts once rather than once per wrapper. Clipped the way the regions are: a
+/// subtree whose box falls entirely outside what is held is not in the shot the same keystroke
+/// would have taken, so it is not in the copy either.
+func regionLines(_ element: AXUIElement, clip: CGRect, deadline: Date, path: inout Set<ElementKey>) -> [String] {
+  if Date() > deadline { return [] }
+  let key = ElementKey(element: element)
+  guard path.insert(key).inserted else { return [] }
+  defer { path.remove(key) }
+
+  let info = probe(element)
+  if let frame = info.frame, !frame.isEmpty, !frame.intersects(clip) { return [] }
+
+  // Read raw rather than reusing the probe's label, which has had its newlines flattened out for
+  // the one line the dump prints.
+  let own = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute]
+    .lazy.compactMap { string(element, $0) }.first { !$0.isEmpty }
+
+  let speaksForItself = ["AXStaticText", "AXTextField", "AXTextArea"].contains(info.role)
+  if info.children.isEmpty || (speaksForItself && own != nil) {
+    return own.map { [$0] } ?? []
+  }
+
+  var lines: [String] = []
+  for child in info.children { lines += regionLines(child, clip: clip, deadline: deadline, path: &path) }
+  // A container whose children said nothing still has its own name to give.
+  if lines.isEmpty, let own { lines = [own] }
+  return lines
+}
+
+func regionText(_ candidate: Candidate, budgetMs: Int) -> String {
+  var path = Set<ElementKey>()
+  let lines = regionLines(
+    candidate.element, clip: candidate.rect,
+    deadline: Date().addingTimeInterval(Double(budgetMs) / 1000), path: &path)
+
+  var kept: [String] = []
+  for line in lines {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    // A wrapper that names itself after its only child repeats it; one of the two is enough.
+    if trimmed.isEmpty || trimmed == kept.last { continue }
+    kept.append(trimmed)
+  }
+  return kept.joined(separator: "\n")
 }
 
 /// Snap to a 2pt grid so boxes that differ by a rounding error collapse into one key.
@@ -491,6 +547,9 @@ final class Session {
   /// the remembered child is no longer inside what is held.
   var descent: [Int] = []
   var chosen: Candidate?
+  /// Set alongside `chosen` when the copy key ended the session: the region's text is wanted, and
+  /// the shutter is not fired at all.
+  var copying = false
   var cancelled = false
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
@@ -499,6 +558,17 @@ final class Session {
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     if keyCode == 53 { cancelled = true; CFRunLoopStop(CFRunLoopGetCurrent()); return }  // escape
+    // Command-C copies the held region's text instead of photographing it. Every other chord is
+    // swallowed rather than acted on: the tap reports "c" whether or not Command was down with it,
+    // and an unfiltered Command-C would otherwise be typed at the hints as a plain letter.
+    if event.flags.contains(.maskCommand) {
+      if keyCode == 8, held != nil {  // c
+        copying = true
+        chosen = held
+        CFRunLoopStop(CFRunLoopGetCurrent())
+      }
+      return
+    }
     if held != nil {
       if keyCode == 36 || keyCode == 76 {  // return, keypad enter
         chosen = held
@@ -949,6 +1019,19 @@ func runSession(_ options: Options) -> Outcome {
   CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
   CFMachPortInvalidate(tap)
   overlay.orderOut(nil)
+
+  // The copy key takes no picture, so there is nothing to wait for the compositor over.
+  if session.copying, let chosen = session.chosen {
+    let text = regionText(chosen, budgetMs: options.budgetMs)
+    let box = chosen.rect
+    guard !text.isEmpty else {
+      return Outcome(code: 13, line: "app=\(name) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
+    }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=text chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+  }
+
   // Give the window server a beat to composite the overlay away before the shutter.
   CFRunLoopRunInMode(.defaultMode, Double(options.delayMs) / 1000, false)
 

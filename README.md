@@ -13,6 +13,11 @@ Typing a hint holds the region rather than firing the shutter: everything outsid
 region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
 does not have to be retyped. `Delete` returns to the hints and `Escape` cancels.
 
+`⌘C` ends it the other way: the held region's text goes to the clipboard and no picture is taken.
+The words come from the same tree the box did — every text element inside the region, in document
+order, clipped to the region the way the shot would be — so it is the region's own text rather than
+anything read back off the pixels.
+
     ./build.sh
 
 `build.sh` compiles, signs, and installs `/Applications/Axshot.app`, relaunching it if it was
