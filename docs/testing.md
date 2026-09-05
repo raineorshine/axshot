@@ -20,6 +20,18 @@ installed app; this is the mechanics it calls for.
   overlay, and `--bundle` is enough to aim it. Driving one costs the keyboard for a couple of
   seconds and nothing else, which is the cheapest way to exercise the tap end to end. Its outcome
   line carries `chars=` and `lines=`, and `pbpaste` is the rest of the assertion.
+- Where a shot *landed* is a shell question too, and the one the app's own hotkeys cannot answer:
+  a driven run through the menu bar app prints no outcome line anywhere. Put a sentinel string on
+  the clipboard before the run, and afterwards `osascript -e 'clipboard info'` names the classes on
+  it — a sentinel still there is proof the run did not touch the clipboard, and `«class PNGf»` is
+  proof it did. Counting the save folder before and after is the other half; a run that copies must
+  leave it unchanged. To check *which* region a clipboard shot holds, write it out and measure it:
+
+      osascript -e 'set f to open for access POSIX file "/tmp/clip.png" with write permission' \
+                -e 'set eof f to 0' \
+                -e 'write (the clipboard as «class PNGf») to f' -e 'close access f'
+      sips -g pixelWidth -g pixelHeight /tmp/clip.png
+
 - `axshot --pid 1` runs the permission checks and exits at "no target app". Useful as a permission
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.

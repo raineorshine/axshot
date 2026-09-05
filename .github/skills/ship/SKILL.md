@@ -89,6 +89,13 @@ git fetch origin && git rebase origin/main
 Resolve conflicts, preferring the branch changes unless clearly wrong, then `git add` and
 `git rebase --continue`, repeating until it completes.
 
+**A clean merge is not a working one, and the key handler is where that bites.** Git conflicts on
+adjacent lines, not on meaning: a branch that landed first can have added an early guard that
+returns before the code you are rebasing is ever reached — every chord under a modifier swallowed,
+say — and yours then merges without a marker and does nothing. Read the whole function your change
+lands in, not just the hunk, and re-test after any rebase that touched behaviour. The compile
+proves nothing here; the change you tested is no longer the change you have.
+
 Skip this step and step 4 if you are already on `main` in the main checkout; commit there and go
 straight to step 5.
 
