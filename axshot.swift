@@ -110,7 +110,8 @@
 //
 // The one time it is not an accessory is while the settings window is open: it turns regular so the
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
-// window closes, so Cmd-W leaves nothing but the menu bar item behind and the app keeps running.
+// window closes, so Cmd-W -- or Escape, which closes it the way a panel does -- leaves nothing but
+// the menu bar item behind and the app keeps running.
 //
 // There is one hotkey, Option-Command-4, because where a shot lands is decided at the end of a hold
 // rather than at the press. It is a Carbon RegisterEventHotKey rather than a tap or a global
@@ -1635,6 +1636,14 @@ final class SettingsWindow: NSWindowController {
       sender.state = sender.state == .on ? .off : .on
       status.stringValue = "Could not change the login item: \(error.localizedDescription)"
     }
+  }
+}
+
+extension SettingsWindow {
+  /// Escape closes the window, the way a panel does. It arrives here only when nothing in front of
+  /// it wanted it: a recorder mid-chord takes its own Escape to abandon the recording, and stops.
+  override func cancelOperation(_ sender: Any?) {
+    window?.performClose(sender)
   }
 }
 
