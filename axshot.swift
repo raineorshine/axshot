@@ -52,6 +52,14 @@
 // to the hints and Escape cancels. The confirmation restarts the session deadline, which is what
 // keeps the tap from being timed out mid-decision.
 //
+// The arrows adjust the held region without going back to the hints, for when the one that was
+// lettered is nearly right: Left and Right step to the neighbouring candidate in document order,
+// Up widens to the smallest kept region containing this one, and Down returns to the region Up was
+// last looking at. Only kept candidates are offered, so Up is a visible widening rather than a walk
+// through the wrappers that repeat the same box. Down retraces an ascent rather than guessing at a
+// child, since a container holds many and containment does not say which; stepping sideways
+// abandons that memory, because what it remembers is no longer inside what is held.
+//
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
 // capturing it would photograph whatever is in that part of the screen instead, so it is dropped
@@ -467,6 +475,12 @@ final class Session {
   var typed = ""
   /// The region a hint selected, held while the mask is up and the shutter waits for Return.
   var held: Candidate?
+  /// Where the held region sits in the candidate list, which is what the arrow keys move through.
+  var heldIndex: Int?
+  /// The indices left behind by each Up, so Down can walk back into the region it came from. An
+  /// ascent is the only thing that records a child; stepping sideways abandons the descent, because
+  /// the remembered child is no longer inside what is held.
+  var descent: [Int] = []
   var chosen: Candidate?
   var cancelled = false
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
@@ -483,6 +497,15 @@ final class Session {
         return
       }
       if keyCode == 51 { release() }  // delete, back to the hints
+      if let index = heldIndex {
+        switch keyCode {
+        case 123: step(from: index, by: -1)  // left
+        case 124: step(from: index, by: 1)  // right
+        case 126: ascend(from: index)  // up
+        case 125: descend()  // down
+        default: break
+        }
+      }
       return
     }
     if keyCode == 51 {  // delete
@@ -499,18 +522,58 @@ final class Session {
     guard labels.contains(where: { $0.hasPrefix(attempt) }) else { NSSound.beep(); return }
     typed = attempt
     if let index = labels.firstIndex(of: typed) {
-      held = candidates[index]
-      view.selection = view.boxes[index].rect
-      deadline = Date().addingTimeInterval(30)
-      refresh()
+      descent = []
+      hold(index)
       return
     }
     refresh()
   }
 
+  /// Hold this candidate: mask around it, and restart the deadline, since every hold is a decision
+  /// the run loop could not have known to wait for.
+  func hold(_ index: Int) {
+    held = candidates[index]
+    heldIndex = index
+    view.selection = view.boxes[index].rect
+    deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// The neighbour in document order. The candidate list reads down the page, so this is the next
+  /// or previous region the way the hints are lettered, whatever the two happen to be nested in.
+  func step(from index: Int, by offset: Int) {
+    let next = index + offset
+    guard candidates.indices.contains(next) else { NSSound.beep(); return }
+    descent = []
+    hold(next)
+  }
+
+  /// Out to the smallest kept region that contains this one. The filter has already thrown away the
+  /// wrappers that merely repeat their child's box, so the enclosing candidate is a visibly bigger
+  /// region rather than the same one again -- which is what makes this a widening rather than a
+  /// walk up a chain of identical rectangles.
+  func ascend(from index: Int) {
+    let inner = candidates[index].rect
+    let parent = candidates.indices
+      .filter { $0 != index && candidates[$0].rect.insetBy(dx: -2, dy: -2).contains(inner) && candidates[$0].area > candidates[index].area }
+      .min { candidates[$0].area < candidates[$1].area }
+    guard let parent else { NSSound.beep(); return }
+    descent.append(index)
+    hold(parent)
+  }
+
+  /// Back in to whatever Up was last looking at. Containment alone would not say which child to
+  /// pick -- a container holds many -- so only the one that was actually left behind is offered.
+  func descend() {
+    guard let child = descent.popLast() else { NSSound.beep(); return }
+    hold(child)
+  }
+
   /// Back from the mask to the hints, with nothing typed.
   func release() {
     held = nil
+    heldIndex = nil
+    descent = []
     typed = ""
     view.selection = nil
     refresh()

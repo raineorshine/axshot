@@ -8,6 +8,11 @@ tree, keeps the boxes that are actually visible, overlays a Surfingkeys-style hi
 captures the one whose hint you type. The region snaps to a real element instead of to wherever the
 pointer happened to stop.
 
+Typing a hint holds the region rather than firing the shutter: everything outside it is masked and
+`Return` takes the shot. The arrows adjust what is held — `←` and `→` step to the neighbouring
+region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
+does not have to be retyped. `Delete` returns to the hints and `Escape` cancels.
+
     ./build.sh
 
 `build.sh` compiles, signs, and installs `/Applications/Axshot.app`, relaunching it if it was
