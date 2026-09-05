@@ -49,13 +49,18 @@
 // corner brackets mark it, and Return takes the shot -- Preview's crop, without the grid. The
 // region comes from a tree the app describes rather than from a rectangle that was dragged, so the
 // one thing worth seeing before the capture is what the tree actually handed over; Delete goes back
-// to the hints and Escape cancels. Command-Return takes the shot to the clipboard instead of to a
-// file, whichever hotkey opened the session: which of the two a region wants is often only clear
-// once it is held and masked, and that is a keystroke away rather than a cancel and a re-press.
-// Command-C ends the session the other way again: the held region's text goes to the clipboard and
-// no picture is taken, since the tree that gave the box has the words in it too and a screenshot of
-// a paragraph is a poor way to carry the paragraph. The confirmation restarts the session deadline,
-// which is what
+// to the hints, and Escape or a second tap of the hotkey cancels. The tap is inserted ahead of the
+// hotkey manager and so sees that chord before Carbon does, which is what lets the press that
+// opened the session close it again -- an overlay that went up by accident comes down under the
+// same fingers rather than sending the hand off to find Escape.
+//
+// A hold has three ways out, and one hotkey, because which one a region wants is only clear once
+// the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
+// same picture on the clipboard, and Command-Shift-C puts the region's *text* there instead and
+// takes no picture at all -- the tree that gave the box has the words in it too, and a screenshot
+// of a paragraph is a poor way to carry the paragraph. The two clipboard exits share a letter
+// because they share a destination; Shift is what asks for the words. Each hold restarts the
+// session deadline, which is a decision the run loop could not have known to wait for.
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
 // lettered is nearly right: Left and Right step across the tree in document order -- to the next
@@ -105,9 +110,10 @@
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
 // window closes, so Cmd-W leaves nothing but the menu bar item behind and the app keeps running.
 //
-// The hotkey is a Carbon RegisterEventHotKey rather than a tap or a global monitor. It is the only
-// one of the three that reserves the chord system-wide, so the frontmost app never sees it, and the
-// only one that needs no permission at all.
+// There is one hotkey, Option-Command-4, because where a shot lands is decided at the end of a hold
+// rather than at the press. It is a Carbon RegisterEventHotKey rather than a tap or a global
+// monitor: the only one of the three that reserves the chord system-wide, so the frontmost app
+// never sees it, and the only one that needs no permission at all.
 //
 // Permission. Accessibility, for the tree and the hint tap; Screen Recording, for the capture.
 // Neither is asked for at launch: the settings window says which is missing and its buttons are what
@@ -152,6 +158,9 @@ struct Options {
   /// Read the shot back and show the corner thumbnail. The menu bar app does; a command line run
   /// exits at once and would only be paying to decode a PNG nobody sees.
   var toast = false
+  /// The chord that opened the session, so pressing it again closes it. Set by the menu bar app; a
+  /// command line run was not opened by a chord and leaves it nil.
+  var cancelChord: Chord?
 }
 
 func usage() -> Never {
@@ -554,8 +563,8 @@ final class Session {
   var typed = ""
   /// The region a hint selected, held while the mask is up and the shutter waits for Return.
   var held: Candidate?
-  /// Set when the shutter was fired with Command held, which sends this one shot to the clipboard
-  /// whichever hotkey started the session.
+  /// Set when the hold was ended with Command-C, which sends the shot to the clipboard rather than
+  /// to a file.
   var toClipboard = false
   /// Where the held region sits in the candidate list, which is what the arrow keys move through.
   var heldIndex: Int?
@@ -564,10 +573,13 @@ final class Session {
   /// the remembered child is no longer inside what is held.
   var descent: [Int] = []
   var chosen: Candidate?
-  /// Set alongside `chosen` when the copy key ended the session: the region's text is wanted, and
-  /// the shutter is not fired at all.
+  /// Set alongside `chosen` when Command-Shift-C ended the session: the region's text is wanted,
+  /// and the shutter is not fired at all.
   var copying = false
   var cancelled = false
+  /// The chord that opened this session. The tap is inserted ahead of the hotkey manager, so it
+  /// sees that chord before Carbon does and a second press can close what the first opened.
+  var cancelChord: Chord?
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
   var view: HintView!
@@ -575,18 +587,23 @@ final class Session {
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     if keyCode == 53 { cancelled = true; CFRunLoopStop(CFRunLoopGetCurrent()); return }  // escape
+    // The hotkey again, at any point: a press that turned out to be a mistake is undone by
+    // repeating it, without the hand having to find Escape. This has to come before the Command
+    // branch below, which would otherwise swallow a chord carrying Command and do nothing with it.
+    if let chord = cancelChord, keyCode == Int64(chord.keyCode),
+       carbonModifiers(event.flags) == chord.modifiers {
+      cancelled = true
+      CFRunLoopStop(CFRunLoopGetCurrent())
+      return
+    }
     // The two chords that end a hold, and nothing else: every other chord under Command is
     // swallowed rather than acted on, since the tap reports "c" whether or not Command was down
     // with it and an unfiltered Command-C would otherwise be typed at the hints as a plain letter.
     if event.flags.contains(.maskCommand) {
-      guard let region = held else { return }
-      switch keyCode {
-      case 8: copying = true  // c, the words rather than a picture of them
-      // Command on the shutter sends the shot to the clipboard whichever hotkey opened the session,
-      // so where it lands is decided with the region on screen rather than back at the hotkey.
-      case 36, 76: toClipboard = true  // return, keypad enter
-      default: return
-      }
+      guard let region = held, keyCode == 8 else { return }  // c
+      // Both ends go to the clipboard, which is why they are the same letter; Shift asks for the
+      // words rather than a picture of them.
+      if event.flags.contains(.maskShift) { copying = true } else { toClipboard = true }
       chosen = region
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
@@ -736,8 +753,8 @@ func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, cont
 
 // MARK: - Capture
 
-/// Where a capture goes. The two hotkeys differ only in this, the way macOS's own region shortcuts
-/// differ only in whether Control is held.
+/// Where a capture goes. Decided at the end of a hold rather than at the hotkey: Return files it,
+/// Command-C puts it on the clipboard.
 enum Destination {
   /// A timestamped file in this directory.
   case directory(String)
@@ -1026,6 +1043,7 @@ func runSession(_ options: Options) -> Outcome {
   session.labels = labels
   session.candidates = candidates
   session.view = view
+  session.cancelChord = options.cancelChord
   Session.shared = session
 
   guard let tap = CGEvent.tapCreate(
@@ -1097,9 +1115,6 @@ struct Chord: Equatable {
   var keyCode: UInt32
   var modifiers: UInt32
 
-  /// Option-Shift-4, next to the Command-Shift-4 that macOS uses for its own region screenshot.
-  static let fallback = Chord(keyCode: UInt32(kVK_ANSI_4), modifiers: UInt32(optionKey | shiftKey))
-
   var isEmpty: Bool { modifiers == 0 }
 
   var display: String {
@@ -1147,70 +1162,53 @@ func keyName(_ code: UInt32) -> String {
 final class HotKey {
   static let shared = HotKey()
 
-  /// What a chord does when it fires. The two differ only in where the capture goes.
-  enum Slot: UInt32, CaseIterable {
-    case toFile = 1
-    case toClipboard = 2
+  static let title = "Capture Region"
+  /// Option-Command-4: the shape of the Command-Shift-4 macOS uses for the same thing, with Option
+  /// standing in for the Shift that macOS has taken.
+  static let fallback = Chord(keyCode: UInt32(kVK_ANSI_4), modifiers: UInt32(optionKey | cmdKey))
 
-    var title: String { self == .toFile ? "Capture Region" : "Capture Region to Clipboard" }
-    var settingsLabel: String { self == .toFile ? "Save to folder" : "Copy to clipboard" }
-    var defaultsKey: String { self == .toFile ? "hotKeyFile" : "hotKeyClipboard" }
-    /// Option-Command-4 and Option-Shift-Command-4: the shape of the Command-Shift-4 pair macOS
-    /// uses for the same two things, with Option standing in for the Shift that macOS has taken,
-    /// and Shift telling the clipboard one from the other.
-    var fallback: Chord {
-      Chord(
-        keyCode: UInt32(kVK_ANSI_4),
-        modifiers: UInt32(optionKey | cmdKey) | (self == .toClipboard ? UInt32(shiftKey) : 0))
-    }
-  }
-
-  private var references: [Slot: EventHotKeyRef] = [:]
+  private var reference: EventHotKeyRef?
   private var installed = false
-  var action: (Slot) -> Void = { _ in }
+  var action: () -> Void = {}
 
-  func register(_ chord: Chord, for slot: Slot) -> Bool {
-    unregister(slot)
+  func register(_ chord: Chord) -> Bool {
+    unregister()
     guard !chord.isEmpty else { return false }
 
     if !installed {
       var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-      InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
-        var id = EventHotKeyID()
-        GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
-        if let slot = Slot(rawValue: id.id) { HotKey.shared.action(slot) }
+      InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+        HotKey.shared.action()
         return noErr
       }, 1, &spec, nil, nil)
       installed = true
     }
 
-    var reference: EventHotKeyRef?
-    let id = EventHotKeyID(signature: OSType(0x41585348), id: slot.rawValue)  // 'AXSH'
+    let id = EventHotKeyID(signature: OSType(0x41585348), id: 1)  // 'AXSH'
     guard RegisterEventHotKey(chord.keyCode, chord.modifiers, id, GetApplicationEventTarget(), 0, &reference) == noErr,
-          let registered = reference
+          reference != nil
     else { return false }
-    references[slot] = registered
     return true
   }
 
-  func unregister(_ slot: Slot) {
-    if let reference = references[slot] { UnregisterEventHotKey(reference) }
-    references[slot] = nil
+  func unregister() {
+    if let reference { UnregisterEventHotKey(reference) }
+    reference = nil
   }
 }
 
 enum Settings {
-  static func chord(_ slot: HotKey.Slot) -> Chord {
+  static var chord: Chord {
     let defaults = UserDefaults.standard
-    guard defaults.object(forKey: slot.defaultsKey + "Code") != nil else { return slot.fallback }
+    guard defaults.object(forKey: "hotKeyCode") != nil else { return HotKey.fallback }
     return Chord(
-      keyCode: UInt32(defaults.integer(forKey: slot.defaultsKey + "Code")),
-      modifiers: UInt32(defaults.integer(forKey: slot.defaultsKey + "Modifiers")))
+      keyCode: UInt32(defaults.integer(forKey: "hotKeyCode")),
+      modifiers: UInt32(defaults.integer(forKey: "hotKeyModifiers")))
   }
 
-  static func setChord(_ chord: Chord, for slot: HotKey.Slot) {
-    UserDefaults.standard.set(Int(chord.keyCode), forKey: slot.defaultsKey + "Code")
-    UserDefaults.standard.set(Int(chord.modifiers), forKey: slot.defaultsKey + "Modifiers")
+  static func setChord(_ chord: Chord) {
+    UserDefaults.standard.set(Int(chord.keyCode), forKey: "hotKeyCode")
+    UserDefaults.standard.set(Int(chord.modifiers), forKey: "hotKeyModifiers")
   }
 
   /// Where captures are saved. Unset, this follows wherever macOS has been told to put its own
@@ -1231,6 +1229,18 @@ enum Settings {
   static var followsSystemFolder: Bool {
     (UserDefaults.standard.string(forKey: "saveDirectory") ?? "").isEmpty
   }
+}
+
+/// The same four modifiers off a tap event, so the chord that opened the session can be recognised
+/// in the keys the overlay is reading. Only these four are compared: a tap event also carries
+/// numeric-pad, function and non-coalesced bits that a chord never states.
+func carbonModifiers(_ flags: CGEventFlags) -> UInt32 {
+  var modifiers: UInt32 = 0
+  if flags.contains(.maskCommand) { modifiers |= UInt32(cmdKey) }
+  if flags.contains(.maskAlternate) { modifiers |= UInt32(optionKey) }
+  if flags.contains(.maskShift) { modifiers |= UInt32(shiftKey) }
+  if flags.contains(.maskControl) { modifiers |= UInt32(controlKey) }
+  return modifiers
 }
 
 func carbonModifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
@@ -1380,7 +1390,7 @@ final class RecorderView: NSView {
 }
 
 final class SettingsWindow: NSWindowController {
-  private var recorders: [HotKey.Slot: RecorderView] = [:]
+  private var recorder: RecorderView!
   private let folder = NSTextField(labelWithString: "")
   private let followingSystem = NSTextField(labelWithString: "")
   private let status = NSTextField(labelWithString: "")
@@ -1393,32 +1403,26 @@ final class SettingsWindow: NSWindowController {
 
   convenience init() {
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 500, height: 400),
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 350),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
     self.init(window: window)
     window.delegate = self
 
-    var rows: [NSView] = []
-    for slot in HotKey.Slot.allCases {
-      let caption = NSTextField(labelWithString: slot.settingsLabel)
-      caption.font = .systemFont(ofSize: 13)
-      let recorder = RecorderView(chord: Settings.chord(slot))
-      recorder.translatesAutoresizingMaskIntoConstraints = false
-      recorder.onChange = { [weak self] chord in self?.apply(chord, to: slot) }
-      recorders[slot] = recorder
+    let caption = NSTextField(labelWithString: "Capture region")
+    caption.font = .systemFont(ofSize: 13)
+    recorder = RecorderView(chord: Settings.chord)
+    recorder.translatesAutoresizingMaskIntoConstraints = false
+    recorder.onChange = { [weak self] chord in self?.apply(chord) }
 
-      let row = NSStackView(views: [caption, recorder])
-      row.orientation = .horizontal
-      row.spacing = 12
-      NSLayoutConstraint.activate([
-        caption.widthAnchor.constraint(equalToConstant: 150),
-        recorder.widthAnchor.constraint(equalToConstant: 190),
-        recorder.heightAnchor.constraint(equalToConstant: 36),
-      ])
-      rows.append(row)
-    }
-
+    let hotKeyRow = NSStackView(views: [caption, recorder])
+    hotKeyRow.orientation = .horizontal
+    hotKeyRow.spacing = 12
+    NSLayoutConstraint.activate([
+      caption.widthAnchor.constraint(equalToConstant: 150),
+      recorder.widthAnchor.constraint(equalToConstant: 190),
+      recorder.heightAnchor.constraint(equalToConstant: 36),
+    ])
     folder.font = .systemFont(ofSize: 12)
     folder.textColor = .secondaryLabelColor
     // Truncate the head: the tail of a path is the part that identifies it.
@@ -1476,7 +1480,7 @@ final class SettingsWindow: NSWindowController {
     relaunchRow.spacing = 12
 
     let stack = NSStackView(
-      views: rows + [folderRow, followingSystem, launch] + permissionViews + [spaces, relaunchRow, status])
+      views: [hotKeyRow, folderRow, followingSystem, launch] + permissionViews + [spaces, relaunchRow, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -1558,18 +1562,10 @@ final class SettingsWindow: NSWindowController {
     NSApp.terminate(nil)
   }
 
-  private func apply(_ chord: Chord, to slot: HotKey.Slot) {
-    // Two slots on one chord would leave the second registration refused and the first firing for
-    // both, so refuse it here where it can be explained.
-    let other = HotKey.Slot.allCases.first { $0 != slot }
-    if let other, Settings.chord(other) == chord {
-      status.stringValue = "\(chord.display) is already the \(other.settingsLabel.lowercased()) shortcut."
-      recorders[slot]?.chord = Settings.chord(slot)
-      return
-    }
-    Settings.setChord(chord, for: slot)
+  private func apply(_ chord: Chord) {
+    Settings.setChord(chord)
     // Another app may already own the chord; Carbon simply refuses to register it.
-    status.stringValue = HotKey.shared.register(chord, for: slot)
+    status.stringValue = HotKey.shared.register(chord)
       ? "" : "\(chord.display) is already taken by another app."
     onChordChange?()
   }
@@ -1628,12 +1624,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Axshot")
 
     let menu = NSMenu()
-    for slot in HotKey.Slot.allCases {
-      let item = NSMenuItem(title: slot.title, action: #selector(captureFromMenu(_:)), keyEquivalent: "")
-      item.target = self
-      item.tag = Int(slot.rawValue)
-      menu.addItem(item)
-    }
+    let capture = NSMenuItem(title: HotKey.title, action: #selector(captureFromMenu), keyEquivalent: "")
+    capture.target = self
+    menu.addItem(capture)
     menu.addItem(.separator())
     let preferences = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
     preferences.target = self
@@ -1643,11 +1636,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusItem.menu = menu
     NSApp.mainMenu = mainMenu()
 
-    HotKey.shared.action = { [weak self] slot in self?.capture(slot) }
-    var refused = false
-    for slot in HotKey.Slot.allCases where !HotKey.shared.register(Settings.chord(slot), for: slot) {
-      refused = true
-    }
+    HotKey.shared.action = { [weak self] in self?.capture() }
+    let refused = !HotKey.shared.register(Settings.chord)
     refreshMenuTitles()
 
     // Neither permission is asked for here. Launching, including at login, should put up no dialog
@@ -1683,17 +1673,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func refreshMenuTitles() {
-    for (index, slot) in HotKey.Slot.allCases.enumerated() {
-      statusItem.menu?.item(at: index)?.title = "\(slot.title)  \(Settings.chord(slot).display)"
-    }
+    statusItem.menu?.item(at: 0)?.title = "\(HotKey.title)  \(Settings.chord.display)"
   }
 
-  @objc private func captureFromMenu(_ sender: NSMenuItem) {
-    guard let slot = HotKey.Slot(rawValue: UInt32(sender.tag)) else { return }
-    capture(slot)
+  @objc private func captureFromMenu() {
+    capture()
   }
 
-  private func capture(_ slot: HotKey.Slot) {
+  private func capture() {
     // The hotkey can be pressed again while the overlay is up; one session at a time.
     guard !busy else { return }
     busy = true
@@ -1703,8 +1690,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Toast.dismiss()
 
     var options = Options()
-    options.destination = slot == .toFile ? .directory(Settings.saveDirectory) : .clipboard
+    options.destination = .directory(Settings.saveDirectory)
     options.toast = true
+    options.cancelChord = Settings.chord
     let outcome = runSession(options)
     if outcome.code == 0, let image = outcome.image, let path = outcome.path {
       Toast.show(image, open: path)

@@ -20,7 +20,7 @@ installed app; this is the mechanics it calls for.
   overlay, and `--bundle` is enough to aim it. Driving one costs the keyboard for a couple of
   seconds and nothing else, which is the cheapest way to exercise the tap end to end. Its outcome
   line carries `chars=` and `lines=`, and `pbpaste` is the rest of the assertion.
-- Where a shot *landed* is a shell question too, and the one the app's own hotkeys cannot answer:
+- Where a shot *landed* is a shell question too, and the one the app's own hotkey cannot answer:
   a driven run through the menu bar app prints no outcome line anywhere. Put a sentinel string on
   the clipboard before the run, and afterwards `osascript -e 'clipboard info'` names the classes on
   it — a sentinel still there is proof the run did not touch the clipboard, and `«class PNGf»` is
@@ -45,7 +45,7 @@ drive it:
     sleep 3
     osascript -e 'tell application "System Events" to keystroke "s"'
 
-The hotkeys work the same way — `key code 21 using {option down, command down}` — which exercises
+The hotkey works the same way — `key code 21 using {option down, command down}` — which exercises
 the real path through the running app rather than the CLI.
 
 Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,

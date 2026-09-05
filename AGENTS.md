@@ -95,14 +95,18 @@ explained where it is implemented.
   line of ancestors and descendants; Left and Right move across it and skip that line entirely. A
   step that lands on a parent or a child is the same region drawn bigger or smaller, which is a
   keystroke the other axis already spends.
-- **A hint holds the region; Return takes the shot, ⌘C copies its text.** The letter masks
-  everything outside the region rather than firing the shutter, because the region came from a tree
-  the app describes and the one thing worth seeing before the capture is what that tree handed
-  over. The same tree holds the words, so a hold has two ways out: a picture of the region, or the
-  region's own text, which is the better carrier whenever the point was what it said.
+- **One hotkey; the hold decides where the shot goes.** The letter masks everything outside the
+  region rather than firing the shutter, because the region came from a tree the app describes and
+  the one thing worth seeing before the capture is what that tree handed over. Which destination a
+  region wants is only clear once it is on screen, so it is chosen at the exit and not at the
+  press: Return files the PNG, ⌘C puts that picture on the clipboard, ⌘⇧C puts the region's own
+  text there instead — the same tree holds the words, and they are the better carrier whenever the
+  point was what it said. A second tap of the hotkey cancels, since the tap sits ahead of the
+  hotkey manager and sees the chord before Carbon does; the press that opened the session is the
+  one already under the fingers.
 - **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
   title bar inactive, and the screenshot would show that.
-- **The hotkeys are Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
+- **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
   system-wide and the only one needing no permission.
 
 ## Changing the region filter

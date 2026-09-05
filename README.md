@@ -13,10 +13,18 @@ Typing a hint holds the region rather than firing the shutter: everything outsid
 region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
 does not have to be retyped, and `HJKL` do the same four things so the hand can stay on the letters.
 An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
-without typing a letter at all. `⌘Return` takes the shot to the clipboard instead of a file,
-whichever hotkey opened the session. `Delete` returns to the hints and `Escape` cancels.
+without typing a letter at all. `Delete` returns to the hints; `Escape` — or a second tap of the
+hotkey — cancels.
 
-`⌘C` ends it the other way: the held region's text goes to the clipboard and no picture is taken.
+A hold has three ways out, so where a shot lands is decided with the region on screen rather than
+back at the hotkey:
+
+| | |
+|---|---|
+| `Return` | save the region as a PNG in the save folder |
+| `⌘C` | put that same picture on the clipboard |
+| `⌘⇧C` | put the region's **text** on the clipboard, and take no picture |
+
 The words come from the same tree the box did — every text element inside the region, in document
 order, clipped to the region the way the shot would be — so it is the region's own text rather than
 anything read back off the pixels.
@@ -26,20 +34,15 @@ anything read back off the pixels.
 `build.sh` compiles, signs, and installs `/Applications/Axshot.app`, relaunching it if it was
 already running. `./build.sh --no-install` stops before that.
 
-It lives in the menu bar with two global hotkeys, alongside the pair macOS uses for the same two
-things:
-
-| | axshot | macOS |
-|---|---|---|
-| Save to folder | ⌥⌘4 | ⌘⇧4 |
-| Copy to clipboard | ⌥⇧⌘4 | ⌃⌘⇧4 |
+It lives in the menu bar with one global hotkey, `⌥⌘4` — the shape of the `⌘⇧4` macOS uses for the
+same thing, with Option standing in for the Shift that macOS has taken.
 
 A shot saved to the folder is shown as a thumbnail in the bottom right corner for a few seconds
 before it slides off; clicking it opens the file. A clipboard shot shows none, the way macOS shows
 none for its own.
 
-Both are re-recordable in Settings, as is the save folder — which by default follows wherever macOS
-has been told to put its own screenshots, and falls back to the Desktop. Files are timestamped:
+The chord is re-recordable in Settings, as is the save folder — which by default follows wherever
+macOS has been told to put its own screenshots, and falls back to the Desktop. Files are timestamped:
 `Axshot 2026-09-05 at 12.34.56.png`.
 
 Resident, but only as a listener. An idle hotkey costs nothing and the tree is still walked on
