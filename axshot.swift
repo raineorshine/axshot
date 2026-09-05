@@ -52,7 +52,9 @@
 // to the hints, and Escape or a second tap of the hotkey cancels. The tap is inserted ahead of the
 // hotkey manager and so sees that chord before Carbon does, which is what lets the press that
 // opened the session close it again -- an overlay that went up by accident comes down under the
-// same fingers rather than sending the hand off to find Escape.
+// same fingers rather than sending the hand off to find Escape. Command-comma ends the session and
+// opens settings, held region or not, since the overlay is in the way of the menu bar and what a
+// shortcut needs changing for is generally the screen it was pressed on.
 //
 // A hold has three ways out, and one hotkey, because which one a region wants is only clear once
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
@@ -580,6 +582,9 @@ final class Session {
   /// The chord that opened this session. The tap is inserted ahead of the hotkey manager, so it
   /// sees that chord before Carbon does and a second press can close what the first opened.
   var cancelChord: Chord?
+  /// Set when Command-comma ended the session: the overlay comes down and the settings window goes
+  /// up, so the shortcut that opens preferences everywhere else reaches them from the hints too.
+  var settings = false
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
   var view: HintView!
@@ -600,6 +605,14 @@ final class Session {
     // swallowed rather than acted on, since the tap reports "c" whether or not Command was down
     // with it and an unfiltered Command-C would otherwise be typed at the hints as a plain letter.
     if event.flags.contains(.maskCommand) {
+      // Settings are reachable whether or not a region is held: the overlay is in the way of the
+      // only other route to them, and what a shortcut needs changing for is usually on screen.
+      if keyCode == 43 {  // comma
+        settings = true
+        cancelled = true
+        CFRunLoopStop(CFRunLoopGetCurrent())
+        return
+      }
       guard let region = held, keyCode == 8 else { return }  // c
       // Both ends go to the clipboard, which is why they are the same letter; Shift asks for the
       // words rather than a picture of them.
@@ -931,6 +944,9 @@ struct Outcome {
   var image: NSImage?
   /// Where it landed, or nil for the clipboard.
   var path: String?
+  /// The session was ended by Command-comma and the caller should open the settings window. Only
+  /// the app has one; a command line run reads this as a plain cancel.
+  var settings = false
 }
 
 func millis(since start: Date) -> Int { Int(Date().timeIntervalSince(start) * 1000) }
@@ -1092,7 +1108,7 @@ func runSession(_ options: Options) -> Outcome {
   CFRunLoopRunInMode(.defaultMode, Double(options.delayMs) / 1000, false)
 
   guard let chosen = session.chosen else {
-    return Outcome(code: 11, line: "app=\(name) cancelled=true walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 11, line: "app=\(name) cancelled=true\(session.settings ? " settings=true" : "") walk_ms=\(walkMs) total_ms=\(millis(since: start))", settings: session.settings)
   }
   let box = chosen.rect
   let destination: Destination = session.toClipboard ? .clipboard : options.destination
@@ -1716,6 +1732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if outcome.code == 0, let image = outcome.image, let path = outcome.path {
       Toast.show(image, open: path)
     }
+    if outcome.settings { showSettings(); return }
     guard outcome.code != 0 && outcome.code != 11 else { return }
 
     let alert = NSAlert()
