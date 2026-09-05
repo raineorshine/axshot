@@ -30,6 +30,34 @@ the real path through the running app rather than the CLI.
 Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,
 and a key sent early is delivered to the target app instead.
 
+## Driving the menu bar item and the settings window
+
+The status item and its menu are reachable as `menu bar 2` — `menu bar 1` is the app's own menu bar,
+which exists only while the app is regular:
+
+    osascript -e 'tell application "System Events" to tell process "Axshot" to click menu bar item 1 of menu bar 2' \
+              -e 'delay 0.5' \
+              -e 'tell application "System Events" to tell process "Axshot" to click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2'
+
+Whether the app is currently an accessory is a shell question, not a visual one:
+
+    lsappinfo info -only ApplicationType "Axshot"
+
+`"UIElement"` is accessory, `"Foreground"` is regular — which is what decides whether it is in the
+App Switcher and the Dock. Reading it before and after opening the window is the whole test for a
+policy change.
+
+`keystroke` and `key code` go to whatever is frontmost *at that moment*, not to the process the
+previous line addressed — a window can be open and not focused, and the key then lands in the user's
+editor. Front the app in the same script and confirm it took:
+
+    osascript -e 'tell application "System Events" to tell process "Axshot" to set frontmost to true' \
+              -e 'delay 0.5' \
+              -e 'tell application "System Events" to keystroke "w" using {command down}'
+
+Clicking the menu item instead (`click menu item "Close" of menu 1 of menu bar item "File" of menu
+bar 1`) tests the action but not the key equivalent, so it is a diagnostic, not the test.
+
 ## Seeing the overlay
 
 Axshot orders its overlay out before capturing, so its own screenshots never contain it. To look at

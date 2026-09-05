@@ -40,14 +40,31 @@ from there through the lock, which refuses while another session is driving the 
 
 A lifecycle prefix on the session title says what a session is doing while it is doing it, so the
 sidebar answers "which chat is holding the lock" without opening any of them. One prefix at a time,
-replaced rather than stacked, and never reported in the response.
+replaced rather than stacked, and never reported in the response. It is a present tense: a session
+that lands its ship and carries on with something else drops the prefix rather than wearing `🚀 `
+through the next task.
 
 | | |
 |---|---|
+| `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
 | `🔓 ` | about to take the lock, or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
 | `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
 | `🚀 ` | shipping |
+| `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a hands-on look |
+| `🪦 ` | dead end — kept for the findings, not to resume |
+| `📚 ` | extracting learnings into `AGENTS.md` or `docs/` |
+
+Set a prefix when the stage *starts*, not when it succeeds, and correct it if the stage falls over: a
+title that only becomes true at the end is blank for the whole stretch the sidebar is there to
+describe. `📚 ` goes on the moment the `learn` skill is invoked, before anything is read. The lock
+and ship prefixes are set by the skills that own them; the rest are set by hand, and nothing
+reconciles a title against reality — `🚙 ` in particular is worth setting before handing back, since
+the idle dot cannot tell "waiting on you" from "given up on".
+
+This vocabulary, and the worktree-and-lock workflow around it, came from the sibling `karabiner`
+repo; its `docs/workflow.md` is where the reasoning lives, and where to look first when a convention
+here reads as thinner than it should.
 
 ## Settled decisions
 

@@ -147,6 +147,13 @@ Release first, then follow the `ship` skill.
   wrong window and conclude the filter is broken.
 - **Never change the bundle identifier or the signing certificate to make a test pass.** Either
   costs a full re-grant of both permissions, which needs the user.
+- **`build.sh` installs.** It is not a compile step you can take before acquiring: it writes the live
+  slot, so a build run first puts your bundle in `/Applications` *outside* the lock, and the acquire
+  that follows snapshots that instead of the app the user had. Use `--no-install` if you only want to
+  know it compiles. Once that has happened the snapshot cannot restore what was lost; put the app
+  back with a second lock cycle that builds the source it should be running —
+  `git show main:axshot.swift > axshot.swift`, `./build.sh`, restore the branch's file, then
+  `release --keep` so the release does not undo it.
 - **Do not build on main while another worktree holds the lock.** `install` refuses, so the build
   succeeds and the install does not — read the output rather than assuming it landed.
 
