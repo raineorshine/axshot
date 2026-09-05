@@ -32,7 +32,7 @@ user was typing into.
 | | |
 |---|---|
 | `axshot.swift` | everything: walk, filter, overlay, hotkeys, settings, CLI |
-| `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot` |
+| `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot`, installs it; `--no-install` stops before the install |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
 | `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
 
@@ -87,6 +87,10 @@ explained where it is implemented.
   element scrolled out of view has a frame that would photograph something else.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
+- **The arrows are two axes, not four directions.** Up and Down move along the held region's own
+  line of ancestors and descendants; Left and Right move across it and skip that line entirely. A
+  step that lands on a parent or a child is the same region drawn bigger or smaller, which is a
+  keystroke the other axis already spends.
 - **A hint holds the region; Return takes the shot.** The letter masks everything outside the
   region rather than firing the shutter, because the region came from a tree the app describes and
   the one thing worth seeing before the capture is what that tree handed over.
