@@ -72,7 +72,9 @@
 // screenshot would be of a window that looks inactive, and NSWorkspace would stop calling the
 // target frontmost. The menu bar app is an accessory and never activates around a capture, and hint
 // keys are read with a CGEventTap, which sees them without focus and swallows them so they never
-// reach the app.
+// reach the app. Key-downs only: the tap sits ahead of the hotkey manager, so a swallowed key-up
+// would leave the chord that started the session looking held, and every second press would fire
+// nothing.
 //
 // The one time it is not an accessory is while the settings window is open: it turns regular so the
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
@@ -588,13 +590,18 @@ final class Session {
 func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, context: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
   switch type {
   case .keyDown: Session.shared.key(event)
-  case .keyUp: break
   case .tapDisabledByTimeout, .tapDisabledByUserInput:
     if let tap = context { CGEvent.tapEnable(tap: Unmanaged<CFMachPort>.fromOpaque(tap).takeUnretainedValue(), enable: true) }
     return nil
   default: return Unmanaged.passUnretained(event)
   }
-  // Swallowed, so hint characters never reach the app underneath.
+  // Swallowed, so hint characters never reach the app underneath. Key-ups are deliberately not
+  // asked for: the tap is inserted ahead of the hotkey manager, and the walk is fast enough (tens
+  // of milliseconds) that the tap is up before the chord that started the session is released. A
+  // swallowed key-up leaves that manager believing the key is still down, so the next press is not
+  // a fresh transition and fires nothing -- the session after that works, and the hotkey appears to
+  // alternate. Nothing needs the up, and letting it through costs an app underneath at most a
+  // key-up it never saw the key-down for.
   return nil
 }
 
@@ -768,7 +775,7 @@ func runSession(_ options: Options) -> Outcome {
     tap: .cgSessionEventTap,
     place: .headInsertEventTap,
     options: .defaultTap,
-    eventsOfInterest: CGEventMask((1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)),
+    eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
     callback: tapCallback,
     userInfo: nil)
   else {
