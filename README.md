@@ -26,6 +26,10 @@ things:
 | Save to folder | ⌥⌘4 | ⌘⇧4 |
 | Copy to clipboard | ⌥⇧⌘4 | ⌃⌘⇧4 |
 
+A shot saved to the folder is shown as a thumbnail in the bottom right corner for a few seconds
+before it slides off; clicking it opens the file. A clipboard shot shows none, the way macOS shows
+none for its own.
+
 Both are re-recordable in Settings, as is the save folder — which by default follows wherever macOS
 has been told to put its own screenshots, and falls back to the Desktop. Files are timestamped:
 `Axshot 2026-09-05 at 12.34.56.png`.
