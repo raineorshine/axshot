@@ -1227,9 +1227,16 @@ enum Settings {
     set { UserDefaults.standard.set(newValue, forKey: "saveDirectory") }
   }
 
-  /// True while the folder is still whatever macOS is using, so the settings window can say so.
+  /// True while no folder has been chosen, so captures are still landing wherever macOS is putting
+  /// its own screenshots. The settings window uses it to know whether there is anything to undo.
   static var followsSystemFolder: Bool {
     (UserDefaults.standard.string(forKey: "saveDirectory") ?? "").isEmpty
+  }
+
+  /// Forgets a chosen folder. Choosing one is otherwise a one-way door: the panel always writes a
+  /// path, so without this the folder macOS is using can never be got back to by name.
+  static func followSystemFolder() {
+    UserDefaults.standard.removeObject(forKey: "saveDirectory")
   }
 }
 
@@ -1394,7 +1401,7 @@ final class RecorderView: NSView {
 final class SettingsWindow: NSWindowController {
   private var recorder: RecorderView!
   private let folder = NSTextField(labelWithString: "")
-  private let followingSystem = NSTextField(labelWithString: "")
+  private let resetFolder = NSButton(title: "Reset", target: nil, action: nil)
   private let status = NSTextField(labelWithString: "")
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
   private var permissionTimer: Timer?
@@ -1435,17 +1442,20 @@ final class SettingsWindow: NSWindowController {
     let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseFolder))
     let folderCaption = NSTextField(labelWithString: "Save to")
     folderCaption.font = .systemFont(ofSize: 13)
-    let folderRow = NSStackView(views: [folderCaption, folder, choose])
+    // Always on screen, and dimmed while there is nothing to undo: a control that appears only
+    // once it can be used is one the user has to discover by making the change it reverses.
+    resetFolder.target = self
+    resetFolder.action = #selector(followSystemFolder)
+    resetFolder.toolTip = "Go back to the macOS screenshot folder."
+    let folderRow = NSStackView(views: [folderCaption, folder, choose, resetFolder])
     folderRow.orientation = .horizontal
     folderRow.spacing = 12
     NSLayoutConstraint.activate([
       folderCaption.widthAnchor.constraint(equalToConstant: 150),
-      // Without a width the folder path stretches the row past both edges of the window.
-      folder.widthAnchor.constraint(equalToConstant: 200),
+      // Without a width the folder path stretches the row past both edges of the window. Two
+      // buttons after it leave 116pt, which the head truncation was already there to handle.
+      folder.widthAnchor.constraint(equalToConstant: 116),
     ])
-
-    followingSystem.font = .systemFont(ofSize: 11)
-    followingSystem.textColor = .tertiaryLabelColor
 
     status.font = .systemFont(ofSize: 11)
     status.textColor = .secondaryLabelColor
@@ -1485,7 +1495,7 @@ final class SettingsWindow: NSWindowController {
     relaunchRow.spacing = 12
 
     let stack = NSStackView(
-      views: [hotKeyRow, folderRow, followingSystem, launch] + permissionViews + [spaces, relaunchRow, status])
+      views: [hotKeyRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -1582,8 +1592,12 @@ final class SettingsWindow: NSWindowController {
       : directory
     folder.stringValue = shown
     folder.toolTip = directory
-    followingSystem.stringValue = Settings.followsSystemFolder
-      ? "Following the macOS screenshot location." : ""
+    resetFolder.isEnabled = !Settings.followsSystemFolder
+  }
+
+  @objc private func followSystemFolder() {
+    Settings.followSystemFolder()
+    refreshFolder()
   }
 
   @objc private func chooseFolder() {
