@@ -11,6 +11,10 @@ it calls for.
 - `axshot --dump` walks and filters and prints, without drawing anything and without touching the
   installed app. This is how the region filter is tuned, it needs no lock, and it is the only path
   that does not touch Screen Recording.
+- The outcome line is the assertion for anything that changes *which* region a session ends on.
+  `rect=` is printed on the capture line, so a driven run can be checked against the region list
+  from a `--dump` of the same window without looking at a pixel; photograph the overlay only for
+  questions about how it is drawn.
 - `axshot --pid 1` runs the permission checks and exits at "no target app". Useful as a permission
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.
@@ -34,6 +38,19 @@ Background the run itself, not just the line after it: a CLI run left in the for
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks
 exactly like a real Escape — `cancelled=true` — and the only thing telling them apart is
 `total_ms`, which lands on the deadline rather than on when the key was sent.
+
+Then `wait` for it before starting the next one. A backgrounded run outlives the keys sent to it —
+by its deadline if nothing ends it — and a second run started meanwhile puts two overlays and two
+taps up at once, after which no key reaches the one being watched. A loop over several cases has to
+be serial even though each case is only a few seconds of keystrokes.
+
+Take the labels from a `--dump` run immediately before, and drive a window whose content is not
+moving. Labels are assigned over the candidates that run found, so a window that gains or loses
+regions between the dump and the drive re-letters everything — and once the count crosses the
+alphabet the labels grow a character, so a label read from the earlier dump is now a prefix. The
+hint never completes, nothing is ever held, and the session ends `cancelled=true` on the deadline,
+which reads as a keystroke that never arrived rather than one that arrived and was ignored. A list
+view that refreshes itself is the worst case; a settings window is the easy one.
 
 A hotkey press that does not land is silent: no overlay appears and the session never starts. Look
 for the overlay before sending hints rather than assuming the chord arrived, and send it again if it
