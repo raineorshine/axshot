@@ -414,7 +414,7 @@ final class HintView: NSView {
 
       // Corner brackets, drawn inside the region so they mark it without covering its edge pixels.
       let arm = min(24, selection.width / 3, selection.height / 3)
-      let thickness: CGFloat = 3
+      let thickness: CGFloat = 2
       let corners = NSBezierPath()
       for (x, dx) in [(selection.minX, 1.0 as CGFloat), (selection.maxX, -1.0 as CGFloat)] {
         for (y, dy) in [(selection.minY, 1.0 as CGFloat), (selection.maxY, -1.0 as CGFloat)] {
