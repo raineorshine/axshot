@@ -55,8 +55,13 @@
 // ordered out before the capture runs, with --delay-ms for the compositor. Focus is never taken
 // from the target app -- the app would redraw its title bar and focus rings unfocused, and the
 // screenshot would be of a window that looks inactive, and NSWorkspace would stop calling the
-// target frontmost. The menu bar app is an accessory that never activates, and hint keys are read
-// with a CGEventTap, which sees them without focus and swallows them so they never reach the app.
+// target frontmost. The menu bar app is an accessory and never activates around a capture, and hint
+// keys are read with a CGEventTap, which sees them without focus and swallows them so they never
+// reach the app.
+//
+// The one time it is not an accessory is while the settings window is open: it turns regular so the
+// window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
+// window closes, so Cmd-W leaves nothing but the menu bar item behind and the app keeps running.
 //
 // The hotkey is a Carbon RegisterEventHotKey rather than a tap or a global monitor. It is the only
 // one of the three that reserves the chord system-wide, so the frontmost app never sees it, and the
@@ -985,6 +990,7 @@ final class SettingsWindow: NSWindowController {
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
     self.init(window: window)
+    window.delegate = self
 
     var rows: [NSView] = []
     for slot in HotKey.Slot.allCases {
@@ -1194,6 +1200,15 @@ final class SettingsWindow: NSWindowController {
   }
 }
 
+extension SettingsWindow: NSWindowDelegate {
+  /// Closing the window is not quitting: the app drops back to being an accessory, which takes it
+  /// out of the App Switcher and the Dock and leaves the menu bar item and the hotkeys running.
+  func windowWillClose(_ notification: Notification) {
+    permissionTimer?.invalidate()
+    NSApp.setActivationPolicy(.accessory)
+  }
+}
+
 // MARK: - Menu bar app
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -1219,6 +1234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     menu.addItem(.separator())
     menu.addItem(NSMenuItem(title: "Quit Axshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     statusItem.menu = menu
+    NSApp.mainMenu = mainMenu()
 
     HotKey.shared.action = { [weak self] slot in self?.capture(slot) }
     var refused = false
@@ -1231,6 +1247,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // at all; the settings window says what is missing and its buttons are what ask. Asking at the
     // first press instead would draw the dialog underneath the overlay.
     if refused || !Permissions.allGranted { showSettings() }
+  }
+
+  /// An accessory app has no menu bar of its own, but the settings window is reachable from the App
+  /// Switcher and so needs the keys that come with one -- Cmd-W above all, which closes the window
+  /// and, unlike Cmd-Q, leaves the app running.
+  private func mainMenu() -> NSMenu {
+    let application = NSMenuItem()
+    application.submenu = NSMenu()
+    let preferences = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+    preferences.target = self
+    application.submenu?.addItem(preferences)
+    application.submenu?.addItem(.separator())
+    application.submenu?.addItem(
+      NSMenuItem(title: "Hide Axshot", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+    application.submenu?.addItem(
+      NSMenuItem(title: "Quit Axshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+
+    let file = NSMenuItem()
+    file.submenu = NSMenu(title: "File")
+    file.submenu?.addItem(
+      NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+
+    let menu = NSMenu()
+    menu.addItem(application)
+    menu.addItem(file)
+    return menu
   }
 
   private func refreshMenuTitles() {
@@ -1268,6 +1310,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       settings = SettingsWindow()
       settings?.onChordChange = { [weak self] in self?.refreshMenuTitles() }
     }
+    // Regular for as long as the window is up, so it can be reached from the App Switcher and its
+    // menu bar carries Cmd-W. windowWillClose puts the app back to being an accessory.
+    NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
     settings?.showWindow(nil)
     settings?.window?.makeKeyAndOrderFront(nil)

@@ -13,6 +13,25 @@ without the main checkout being able to fast-forward, so local `main` can be beh
 land on. Pushing from the worktree keeps shipping independent of whatever the main checkout is
 doing.
 
+## Before any of it: the user's own pass
+
+**Anything the user sees or touches ships only after the user has tried it by hand.** The overlay and
+its hints, the settings window, the menu bar menu, the hotkeys and what keys do, how permissions are
+asked for, whether the app takes focus or shows up in the Dock or the App Switcher — a driven test
+proves the path runs, not that the result is any good to use, and that judgement is the user's.
+
+Automated testing is not the pass and neither is a screenshot. Hand them the build and wait:
+
+1. Hold the test lock with this branch installed as `/Applications/Axshot.app` — the `test` skill's
+   step 3 leaves it exactly there.
+2. Tell the user it is live, name the chords or the window to look at, and say what changed.
+3. **Wait for their answer.** Do not release the lock, do not restore anything, do not start step 0.
+   The lock is what stops another session swapping the app out from under them mid-look.
+4. Ship on a yes. On anything else, fix it and hand it back — the lock stays held across the loop.
+
+Only a change with no visible surface at all — a comment, a doc, a refactor with identical behaviour
+— skips this, and only if nothing about the run changed.
+
 ## Procedure
 
 ### 0. Prefix the session title with 🚀, then release the test lock
@@ -33,7 +52,8 @@ If this branch was tested via the `test` skill, its build is still installed as
 comment fix) and is safe to ship, and another session's lock is theirs. Both are silent no-ops — do
 not report them.
 
-Ship the change you *tested* — if the branch moved after the last test, re-test before shipping.
+Ship the change you *tested* — if the branch moved after the last test, re-test before shipping, and
+if the fix touched anything visible, hand it back for the pass above before releasing.
 
 ### 1. Build, and read the signing line (must run before committing)
 

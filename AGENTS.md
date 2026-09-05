@@ -46,7 +46,7 @@ replaced rather than stacked, and never reported in the response.
 |---|---|
 | `🔓 ` | about to take the lock, or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
-| `📦 ` | tested and worth shipping without re-testing |
+| `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
 | `🚀 ` | shipping |
 
 ## Settled decisions
