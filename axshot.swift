@@ -38,10 +38,12 @@
 //   --delay-ms <n>    wait this long after hiding the overlay before capturing (default 60), which
 //                     is the window server being given a beat to composite the overlay away
 //
-// Why the hints and not a label. ax-press names one control and stops at the first match, which is
-// why it costs 30ms on a page of 5000 elements. A hint overlay needs every candidate, so it pays
-// for the whole walk -- and in exchange it reaches regions with no label at all, which is most of
-// what you want to screenshot.
+// Why the hints and not a label. Naming one region and searching for it would let the walk stop at
+// the first match, which on a page of 5000 elements costs tens of milliseconds rather than the whole
+// tree. A hint overlay has to have every candidate before it can draw anything, so it pays for the
+// full walk -- and in exchange it reaches regions carrying no label at all, which is most of what is
+// worth screenshotting, and it lets you pick what you can see rather than guess what the tree calls
+// it.
 //
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
