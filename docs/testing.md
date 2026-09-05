@@ -145,6 +145,17 @@ editor. Front the app in the same script and confirm it took:
 Clicking the menu item instead (`click menu item "Close" of menu 1 of menu bar item "File" of menu
 bar 1`) tests the action but not the key equivalent, so it is a diagnostic, not the test.
 
+Address that window's controls by name or subrole, never by index. `button 1 of window 1` is
+`Choose…`, not the close box, so a script meaning to close the window opens the folder picker
+instead — and unlike a hint that misses, a misfire here is in front of the user and one Return away
+from rewriting the save folder. Close it with `first button of window "Axshot" whose subrole is
+"AXCloseButton"`, and name the window rather than numbering it: an open panel becomes `window 1`, so
+a retry aimed there reopens the picker it was meant to dismiss.
+
+An empty window list is how "the install put no settings window on screen" gets asserted — the app
+opens one only when a permission is missing or a hotkey was refused. It is also what a locked screen
+reports for a window that is there, so it is a pass only on a machine that is awake.
+
 ## Seeing the overlay
 
 Axshot orders its overlay out before capturing, so its own screenshots never contain it. To look at

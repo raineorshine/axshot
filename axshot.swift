@@ -747,7 +747,9 @@ func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, cont
   // swallowed key-up leaves that manager believing the key is still down, so the next press is not
   // a fresh transition and fires nothing -- the session after that works, and the hotkey appears to
   // alternate. Nothing needs the up, and letting it through costs an app underneath at most a
-  // key-up it never saw the key-down for.
+  // key-up it never saw the key-down for. A swallowed key-*down* is the harmless direction, which
+  // is what the cancel chord relies on: the manager simply does not fire, and the next press is
+  // still a fresh transition.
   return nil
 }
 
@@ -1402,6 +1404,9 @@ final class SettingsWindow: NSWindowController {
   var onChordChange: (() -> Void)?
 
   convenience init() {
+    // The stack is pinned to the top and the height is a constant, so the window does not shrink to
+    // its content: a row added or removed here is a row's worth of height to adjust by hand, or the
+    // window keeps a gap where the row was.
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 500, height: 350),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
