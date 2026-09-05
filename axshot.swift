@@ -451,11 +451,6 @@ final class HintView: NSView {
     }
 
     for box in boxes where box.label.hasPrefix(typed) {
-      NSColor(calibratedRed: 0.05, green: 0.05, blue: 0.05, alpha: 0.55).setStroke()
-      let outline = NSBezierPath(rect: box.rect.insetBy(dx: 0.5, dy: 0.5))
-      outline.lineWidth = 1
-      outline.stroke()
-
       let remaining = String(box.label.dropFirst(typed.count))
       let text = NSAttributedString(string: remaining.uppercased(), attributes: [
         .font: hintFont,
