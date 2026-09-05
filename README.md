@@ -35,7 +35,8 @@ Given arguments, the same binary is a CLI instead of the app. `bin/axshot` links
     bin/axshot --out /tmp/x.png   # capture to an exact path
 
 `axshot.swift`'s header comment is the full reference: every option, and why each part works the way
-it does.
+it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, with guides on
+[permissions](docs/permissions.md) and [testing](docs/testing.md).
 
 ## Permission
 
@@ -61,8 +62,8 @@ Two things that cost an hour once:
 
 `build.sh` signs with a stable self-signed identity created by `create-signing-cert.sh`, which is
 what keeps both grants alive across rebuilds. The first build after the certificate is created puts
-up a one-time keychain dialog asking to let `codesign` use the key; approve it and no later build
-asks again. To skip even that:
+up a one-time keychain dialog asking to let `codesign` use the key; **Always Allow** is the answer
+that stops it coming back. To set that up in advance instead:
 
     AXSHOT_KEYCHAIN_PASSWORD='…' ./create-signing-cert.sh
 
@@ -71,6 +72,9 @@ granted again after every build.
 
 A command line run re-spawns itself with its responsibility disclaimed, so TCC judges `axshot`
 rather than the terminal, and one pair of grants serves both the app and the shell.
+
+[docs/permissions.md](docs/permissions.md) has the rest: what TCC treats as this app, what breaks a
+grant, and what to do when one is listed but denied.
 
 ## Tuning the filter
 
