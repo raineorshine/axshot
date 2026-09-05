@@ -76,6 +76,13 @@
 // would leave the chord that started the session looking held, and every second press would fire
 // nothing.
 //
+// After the shutter, a thumbnail of the shot sits in the bottom right corner for a few seconds and
+// then slides off the right edge, the way macOS's own does: the shot is a region of a window rather than the window, so the
+// one thing worth confirming is which region landed. A click opens the file and dismisses it. It is
+// a non-activating panel, so it takes no more focus than the overlay does, and the next capture
+// dismisses it before walking rather than waiting for it to expire -- a toast still on screen is
+// something screencapture(1) would photograph.
+//
 // The one time it is not an accessory is while the settings window is open: it turns regular so the
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
 // window closes, so Cmd-W leaves nothing but the menu bar item behind and the app keeps running.
@@ -124,6 +131,9 @@ struct Options {
   var prompt = false
   var delayMs = 60
   var worker = false
+  /// Read the shot back and show the corner thumbnail. The menu bar app does; a command line run
+  /// exits at once and would only be paying to decode a PNG nobody sees.
+  var toast = false
 }
 
 func usage() -> Never {
@@ -650,11 +660,139 @@ func capture(_ rect: CGRect, to path: String?) -> Bool {
   return path.map { FileManager.default.fileExists(atPath: $0) } ?? true
 }
 
+// MARK: - Toast
+
+/// The thumbnail macOS drops in the bottom right corner after its own screenshots: proof that the
+/// shutter fired, and a handle on the file without going to look for it. It lingers a few seconds
+/// and then slides off the right edge, the way macOS's does; a click opens what was captured and
+/// dismisses it early. Only a shot that went to a file gets one, as with macOS: a clipboard shot is
+/// already where it is wanted, and the thumbnail's whole job is the file it stands in for.
+///
+/// It is a non-activating panel, for the same reason the overlay never takes focus -- a toast that
+/// activated the app would redraw the target's title bar inactive the moment the shot landed. It is
+/// also dismissed at the start of the next capture rather than left to expire, since a toast still
+/// on screen is something the next screencapture(1) would photograph.
+final class ToastView: NSView {
+  var image: NSImage?
+  var onClick: (() -> Void)?
+  /// The mat the thumbnail is framed in. Black rather than the white macOS uses: the shots are of
+  /// one region of a window rather than a whole desktop, and a light one needs an edge that a white
+  /// frame does not give it.
+  static let mat: CGFloat = 6
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor.black.setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+    guard let image else { return }
+    let inner = bounds.insetBy(dx: ToastView.mat, dy: ToastView.mat)
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(roundedRect: inner, xRadius: 3, yRadius: 3).addClip()
+    image.draw(in: inner)
+    NSGraphicsContext.restoreGraphicsState()
+    // A capture of something dark would otherwise dissolve into the mat.
+    NSColor.white.withAlphaComponent(0.2).setStroke()
+    let edge = NSBezierPath(roundedRect: inner.insetBy(dx: 0.25, dy: 0.25), xRadius: 3, yRadius: 3)
+    edge.lineWidth = 0.5
+    edge.stroke()
+  }
+
+  override func mouseDown(with event: NSEvent) { onClick?() }
+}
+
+final class Toast {
+  private static var current: Toast?
+  /// The thumbnail is fitted inside this, so a wide region and a tall one are the same weight on
+  /// screen, and the corner it sits in stays the same size.
+  private static let maxSize = CGSize(width: 240, height: 150)
+  private static let margin: CGFloat = 16
+  private static let linger: TimeInterval = 4
+
+  private let panel: NSPanel
+  private var timer: Timer?
+
+  private init(_ image: NSImage, open path: String) {
+    let scale = min(
+      Toast.maxSize.width / max(image.size.width, 1),
+      Toast.maxSize.height / max(image.size.height, 1),
+      1)
+    let mat = ToastView.mat * 2
+    let size = CGSize(
+      width: (image.size.width * scale).rounded() + mat,
+      height: (image.size.height * scale).rounded() + mat)
+    let screen = NSScreen.main ?? NSScreen.screens[0]
+    let area = screen.visibleFrame
+    let frame = CGRect(
+      x: area.maxX - Toast.margin - size.width,
+      y: area.minY + Toast.margin,
+      width: size.width,
+      height: size.height)
+
+    panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    panel.isFloatingPanel = true
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
+    panel.level = .statusBar
+    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+
+    let view = ToastView(frame: CGRect(origin: .zero, size: size))
+    view.image = image
+    view.onClick = { [weak self] in
+      NSWorkspace.shared.open(URL(fileURLWithPath: path))
+      self?.close()
+    }
+    panel.contentView = view
+    panel.orderFrontRegardless()
+
+    timer = Timer.scheduledTimer(withTimeInterval: Toast.linger, repeats: false) { [weak self] _ in
+      self?.slideOff()
+    }
+  }
+
+  /// Off the right edge rather than a fade in place: the corner is emptied by something leaving it,
+  /// which reads at the edge of vision in a way a dimming rectangle does not.
+  private func slideOff() {
+    let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+    var frame = panel.frame
+    frame.origin.x = screen.frame.maxX + 1
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.35
+      context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      panel.animator().setFrame(frame, display: true)
+      panel.animator().alphaValue = 0
+    } completionHandler: { [weak self] in
+      self?.close()
+    }
+  }
+
+  private func close() {
+    timer?.invalidate()
+    timer = nil
+    panel.orderOut(nil)
+    if Toast.current === self { Toast.current = nil }
+  }
+
+  /// Replaces whatever is on screen: one shot, one thumbnail.
+  static func show(_ image: NSImage, open path: String) {
+    dismiss()
+    current = Toast(image, open: path)
+  }
+
+  static func dismiss() {
+    current?.close()
+    current = nil
+  }
+}
+
 // MARK: - One capture
 
 struct Outcome {
   var code: Int32
   var line: String
+  /// The shot that was just taken, for the toast. Nil unless it was asked for and read back.
+  var image: NSImage?
+  /// Where it landed, or nil for the clipboard.
+  var path: String?
 }
 
 func millis(since start: Date) -> Int { Int(Date().timeIntervalSince(start) * 1000) }
@@ -811,8 +949,11 @@ func runSession(_ options: Options) -> Outcome {
     return Outcome(code: 12, line: "app=\(name) capture=failed\(hint) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
   }
 
+  // Read back for the toast, which only a shot with a file behind it gets.
+  let image = options.toast ? path.flatMap({ NSImage(contentsOfFile: $0) }) : nil
+
   let label = chosen.label.isEmpty ? "" : " label=\"\(chosen.label.prefix(60))\""
-  return Outcome(code: 0, line: "app=\(name) role=\(chosen.role)\(label) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) visited=\(walk.visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")")
+  return Outcome(code: 0, line: "app=\(name) role=\(chosen.role)\(label) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) visited=\(walk.visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")", image: image, path: path)
 }
 
 // MARK: - Hotkey
@@ -1425,9 +1566,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     busy = true
     defer { busy = false }
 
+    // A toast still on screen is something the next screencapture(1) would photograph.
+    Toast.dismiss()
+
     var options = Options()
     options.destination = slot == .toFile ? .directory(Settings.saveDirectory) : .clipboard
+    options.toast = true
     let outcome = runSession(options)
+    if outcome.code == 0, let image = outcome.image, let path = outcome.path {
+      Toast.show(image, open: path)
+    }
     guard outcome.code != 0 && outcome.code != 11 else { return }
 
     let alert = NSAlert()
