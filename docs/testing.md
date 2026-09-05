@@ -67,6 +67,14 @@ window, where the hint letter, the arrow and the Return all land and submit. A `
 backgrounded run before each key costs nothing, and is the difference between a test that reports
 nothing happened and one that types into someone's editor.
 
+The driver's own failures are invisible in the outcome line, which reports only that nothing was
+typed. The shell is zsh, where an unquoted parameter is *not* word-split, so a `for k in $keys` over
+a list of key codes passes the whole list as one argument and osascript rejects it — every key of
+every case silently unsent, and every run ending on its deadline exactly as it would if the tap were
+broken. Split explicitly (`${=keys}`) and read osascript's stderr rather than only the run's last
+line; a case that ends `cancelled=true` is a claim about the driver until the keys are known to have
+been posted.
+
 A run that ends `cancelled=true` well before its deadline was Escaped by a person; the deadline is
 what an unattended run ends on. Once that has happened twice, and especially once `total_ms` shrinks
 from one run to the next — they are reacting faster each time to a full-screen overlay they did not
