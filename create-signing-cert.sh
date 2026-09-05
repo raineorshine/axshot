@@ -50,14 +50,17 @@ keyUsage             = critical,digitalSignature
 extendedKeyUsage     = critical,codeSigning
 EOF
 
+# The key file is named after the identity because `security import` takes the key's keychain label
+# from the filename: a key.pem leaves codesign asking for permission to use key "key", which says
+# nothing about what is being signed or why.
 openssl req -x509 -newkey rsa:2048 -nodes \
-	-keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
+	-keyout "$TMP/$CERT_NAME.pem" -out "$TMP/cert.pem" \
 	-days 3650 -config "$TMP/cert.cnf" >/dev/null 2>&1
 
 # Import key and cert separately -- more reliable than a PKCS#12 across OpenSSL versions.
 # -T /usr/bin/codesign puts codesign on the key's access list.
-security import "$TMP/key.pem"  -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
-security import "$TMP/cert.pem" -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
+security import "$TMP/$CERT_NAME.pem" -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
+security import "$TMP/cert.pem"       -k "$KEYCHAIN" -T /usr/bin/codesign >/dev/null
 
 if [ -n "${AXSHOT_KEYCHAIN_PASSWORD:-}" ]; then
 	if security set-key-partition-list -S apple-tool:,apple: -s -k "$AXSHOT_KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null 2>&1; then
