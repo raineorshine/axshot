@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Creates a stable, self-signed code-signing certificate for axshot, then prints its identity name
+# Creates a stable, self-signed code-signing certificate for Axshot, then prints its identity name
 # on stdout.
 #
 # Why this exists: an ad-hoc signature's code hash changes on every build, and TCC pins both the
@@ -20,7 +20,7 @@
 #     AXSHOT_KEYCHAIN_PASSWORD='…' ./create-signing-cert.sh
 set -euo pipefail
 
-CERT_NAME="${AXSHOT_SIGN_IDENTITY:-axshot Local Signing}"
+CERT_NAME="${AXSHOT_SIGN_IDENTITY:-Axshot Local Signing}"
 KEYCHAIN="${AXSHOT_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 
 log() { printf '%s\n' "$*" >&2; }

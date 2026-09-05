@@ -33,7 +33,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
 	<key>CFBundleExecutable</key><string>axshot</string>
 	<key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-	<key>CFBundleName</key><string>axshot</string>
+	<key>CFBundleName</key><string>Axshot</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>$VERSION</string>

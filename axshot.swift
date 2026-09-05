@@ -480,13 +480,13 @@ enum Destination {
   /// The clipboard, and no file at all.
   case clipboard
 
-  /// macOS names its own shots "Screenshot 2026-09-05 at 12.34.56.png"; match that shape so the two
-  /// sort together in whichever folder they share.
+  /// macOS names its own shots "Screenshot 2026-09-05 at 12.34.56.png"; match that shape, capital
+  /// included, so the two sort together in whichever folder they share.
   static func timestamped(in directory: String) -> String {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-    return (directory as NSString).appendingPathComponent("axshot \(formatter.string(from: Date())).png")
+    return (directory as NSString).appendingPathComponent("Axshot \(formatter.string(from: Date())).png")
   }
 
   /// The path this capture will be written to, creating the directory if it is missing. Nil for the
@@ -743,12 +743,13 @@ final class HotKey {
     var title: String { self == .toFile ? "Capture Region" : "Capture Region to Clipboard" }
     var settingsLabel: String { self == .toFile ? "Save to folder" : "Copy to clipboard" }
     var defaultsKey: String { self == .toFile ? "hotKeyFile" : "hotKeyClipboard" }
-    /// Option-Shift-4 and Option-Shift-Control-4, alongside the Command-Shift-4 and
-    /// Command-Shift-Control-4 that macOS uses for the same two things.
+    /// Option-Command-4 and Option-Shift-Command-4: the shape of the Command-Shift-4 pair macOS
+    /// uses for the same two things, with Option standing in for the Shift that macOS has taken,
+    /// and Shift telling the clipboard one from the other.
     var fallback: Chord {
       Chord(
         keyCode: UInt32(kVK_ANSI_4),
-        modifiers: UInt32(optionKey | shiftKey) | (self == .toClipboard ? UInt32(controlKey) : 0))
+        modifiers: UInt32(optionKey | cmdKey) | (self == .toClipboard ? UInt32(shiftKey) : 0))
     }
   }
 
@@ -854,6 +855,22 @@ enum Permissions {
     }
   }
 
+  /// The TCC service name, for clearing a record that has gone stale.
+  var service: String { self == .accessibility ? "Accessibility" : "ScreenCapture" }
+
+  /// A row granted against an earlier build of this app keeps that build's code requirement, so a
+  /// differently signed binary no longer satisfies it: the switch reads on and every check still
+  /// says no, with no way to tell that from never having been asked. Clearing the record is the
+  /// only way out, and it is offered only after asking plainly has visibly failed.
+  func reset() {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+    process.arguments = ["reset", service, bundleId]
+    try? process.run()
+    process.waitUntilExit()
+  }
+
   /// The system dialog, which also puts axshot in the right list in System Settings. Granting
   /// Accessibility does not take effect until relaunch, which is why the button says so.
   func request() {
@@ -957,13 +974,16 @@ final class SettingsWindow: NSWindowController {
   private let status = NSTextField(labelWithString: "")
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
   private var permissionTimer: Timer?
+  /// When each permission was last asked for, so a request that visibly did nothing can offer the
+  /// stale-record escape rather than repeating itself.
+  private var askedAt: [Int: Date] = [:]
   var onChordChange: (() -> Void)?
 
   convenience init() {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 500, height: 400),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
-    window.title = "axshot"
+    window.title = "Axshot"
     self.init(window: window)
 
     var rows: [NSView] = []
@@ -1014,6 +1034,9 @@ final class SettingsWindow: NSWindowController {
     launch.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
     var permissionViews: [NSView] = [separator()]
+    let spaces = NSTextField(labelWithString: "If no dialog appears, check your other Spaces — macOS opens it wherever it likes.")
+    spaces.font = .systemFont(ofSize: 11)
+    spaces.textColor = .tertiaryLabelColor
     for permission in [Permissions.accessibility, .screenRecording] {
       let caption = NSTextField(labelWithString: permission.title)
       caption.font = .systemFont(ofSize: 13)
@@ -1033,7 +1056,14 @@ final class SettingsWindow: NSWindowController {
       permissionViews.append(row)
     }
 
-    let stack = NSStackView(views: rows + [folderRow, followingSystem, launch] + permissionViews + [status])
+    let relaunch = NSButton(title: "Relaunch", target: self, action: #selector(relaunchApp))
+    relaunch.toolTip = "Accessibility only takes effect after a restart."
+    let relaunchRow = NSStackView(views: [NSTextField(labelWithString: "After granting Accessibility"), relaunch])
+    relaunchRow.orientation = .horizontal
+    relaunchRow.spacing = 12
+
+    let stack = NSStackView(
+      views: rows + [folderRow, followingSystem, launch] + permissionViews + [spaces, relaunchRow, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -1084,15 +1114,35 @@ final class SettingsWindow: NSWindowController {
       state.textColor = granted ? .systemGreen : .systemOrange
       button.isHidden = granted
       button.toolTip = permission.explanation
+      if granted { askedAt[button.tag] = nil }
+      // Asking plainly comes first. Only once that has been given time to work does the button
+      // become the one that clears a stale record, so a normal grant is never undone by a
+      // second click.
+      let stale = (askedAt[button.tag].map { Date().timeIntervalSince($0) > 8 } ?? false)
+      button.title = stale ? "Reset & ask again" : "Grant…"
     }
   }
 
   @objc private func grant(_ sender: NSButton) {
     let permission: Permissions = sender.tag == 0 ? .accessibility : .screenRecording
+    if sender.title != "Grant…" { permission.reset() }
+    askedAt[sender.tag] = Date()
     permission.request()
-    // The dialog only offers to open System Settings; a rebuilt binary is often already listed as a
-    // stale entry, in which case no dialog appears at all and the pane is the only way through.
+    // The dialog only offers to open System Settings, and it can land on another Space, so put the
+    // pane itself in front too.
     permission.openSettingsPane()
+    refreshPermissions()
+  }
+
+  /// Accessibility is decided for a process when it starts, so a grant made while axshot is running
+  /// does nothing until it runs again.
+  @objc private func relaunchApp() {
+    let path = Bundle.main.bundleURL.path
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", "sleep 1; open -n \"$0\"", path]
+    try? process.run()
+    NSApp.terminate(nil)
   }
 
   private func apply(_ chord: Chord, to slot: HotKey.Slot) {
@@ -1153,7 +1203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "axshot")
+    statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Axshot")
 
     let menu = NSMenu()
     for slot in HotKey.Slot.allCases {
@@ -1167,7 +1217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     preferences.target = self
     menu.addItem(preferences)
     menu.addItem(.separator())
-    menu.addItem(NSMenuItem(title: "Quit axshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    menu.addItem(NSMenuItem(title: "Quit Axshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     statusItem.menu = menu
 
     HotKey.shared.action = { [weak self] slot in self?.capture(slot) }
@@ -1206,7 +1256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard outcome.code != 0 && outcome.code != 11 else { return }
 
     let alert = NSAlert()
-    alert.messageText = "axshot could not capture that."
+    alert.messageText = "Axshot could not capture that."
     alert.informativeText = outcome.line
     alert.alertStyle = .warning
     NSApp.activate(ignoringOtherApps: true)
