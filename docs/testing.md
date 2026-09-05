@@ -15,6 +15,11 @@ installed app; this is the mechanics it calls for.
   `rect=` is printed on the capture line, so a driven run can be checked against the region list
   from a `--dump` of the same window without looking at a pixel; photograph the overlay only for
   questions about how it is drawn.
+- A session ending in a copy rather than a capture reads no pixels at all, so it needs neither
+  Screen Recording nor the target window in front — the walk works on a window that is behind the
+  overlay, and `--bundle` is enough to aim it. Driving one costs the keyboard for a couple of
+  seconds and nothing else, which is the cheapest way to exercise the tap end to end. Its outcome
+  line carries `chars=` and `lines=`, and `pbpaste` is the rest of the assertion.
 - `axshot --pid 1` runs the permission checks and exits at "no target app". Useful as a permission
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.

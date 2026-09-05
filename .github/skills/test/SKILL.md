@@ -144,6 +144,9 @@ Release first, then follow the `ship` skill.
 - **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
   seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
   not start one and walk away.
+- **The clipboard is the user's too.** Anything that drives a clipboard path overwrites whatever
+  they were carrying, and it is not restored by releasing the lock. Save it with `pbpaste` before
+  the first run and put it back after the last one.
 - **A capture takes whatever is frontmost.** Activate the app you mean, or you will measure the
   wrong window and conclude the filter is broken.
 - **Never change the bundle identifier or the signing certificate to make a test pass.** Either

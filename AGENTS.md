@@ -92,9 +92,11 @@ explained where it is implemented.
   line of ancestors and descendants; Left and Right move across it and skip that line entirely. A
   step that lands on a parent or a child is the same region drawn bigger or smaller, which is a
   keystroke the other axis already spends.
-- **A hint holds the region; Return takes the shot.** The letter masks everything outside the
-  region rather than firing the shutter, because the region came from a tree the app describes and
-  the one thing worth seeing before the capture is what that tree handed over.
+- **A hint holds the region; Return takes the shot, ⌘C copies its text.** The letter masks
+  everything outside the region rather than firing the shutter, because the region came from a tree
+  the app describes and the one thing worth seeing before the capture is what that tree handed
+  over. The same tree holds the words, so a hold has two ways out: a picture of the region, or the
+  region's own text, which is the better carrier whenever the point was what it said.
 - **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
   title bar inactive, and the screenshot would show that.
 - **The hotkeys are Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
