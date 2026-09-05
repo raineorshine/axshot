@@ -1,6 +1,6 @@
 # Axshot
 
-A macOS menu bar app that finds screenshot regions in the accessibility tree. One Swift file, two
+A macOS menu bar app that finds screenshot regions in the accessibility tree. One Swift file, three
 shell scripts, no dependencies.
 
 **`axshot.swift`'s header comment is the reference for the tool itself** — every option, and the
@@ -17,6 +17,15 @@ file does not repeat it.
 Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
 about to do, before doing it.
+
+## Driving the app on a live machine
+
+The user is at the keyboard doing their own work while a test runs, and every drive of the real app
+brings some window to the front. Hold the foreground for a second, not for a stretch: activate,
+send the hint, send Return, and let go. Everything that is not the keystrokes — reading `--dump`
+output, checking the PNG, deciding what the labels mean — happens before the sequence starts or
+after the capture lands, never in the middle of it with a window parked in front of whatever the
+user was typing into.
 
 ## Layout
 
@@ -78,6 +87,9 @@ explained where it is implemented.
   element scrolled out of view has a frame that would photograph something else.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
+- **A hint holds the region; Return takes the shot.** The letter masks everything outside the
+  region rather than firing the shutter, because the region came from a tree the app describes and
+  the one thing worth seeing before the capture is what that tree handed over.
 - **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
   title bar inactive, and the screenshot would show that.
 - **The hotkeys are Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
