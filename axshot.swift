@@ -53,7 +53,9 @@
 // keeps the tap from being timed out mid-decision.
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
-// lettered is nearly right: Left and Right step to the neighbouring candidate in document order,
+// lettered is nearly right: Left and Right step across the tree in document order -- to the next
+// sibling, cousin, uncle or nephew, skipping the held region's own ancestors and descendants, which
+// are the same region drawn bigger or smaller and are what the other two arrows are for -- while
 // Up widens to the smallest kept region containing this one, and Down returns to the region Up was
 // last looking at. Only kept candidates are offered, so Up is a visible widening rather than a walk
 // through the wrappers that repeat the same box. Down retraces an ascent rather than guessing at a
@@ -546,10 +548,26 @@ final class Session {
     refresh()
   }
 
-  /// The neighbour in document order. The candidate list reads down the page, so this is the next
-  /// or previous region the way the hints are lettered, whatever the two happen to be nested in.
+  /// The next region off the held one's direct line: its siblings, cousins, uncles and nephews, in
+  /// document order. Anything on the line is what Up and Down are for, and stepping onto it would
+  /// spend a keystroke on the same region drawn bigger or smaller. The walk is pre-order, so a
+  /// candidate's descendants are exactly the run that follows it while the depth stays greater, and
+  /// its ancestors are the entries before it that keep setting a new shallowest depth.
   func step(from index: Int, by offset: Int) {
-    let next = index + offset
+    let depth = candidates[index].depth
+    var shallowest = depth
+    var next = index + offset
+    while candidates.indices.contains(next) {
+      let other = candidates[next].depth
+      if offset > 0 {
+        if other > depth { next += offset; continue }  // a descendant
+      } else if other < shallowest {
+        shallowest = other  // an ancestor
+        next += offset
+        continue
+      }
+      break
+    }
     guard candidates.indices.contains(next) else { NSSound.beep(); return }
     descent = []
     hold(next)
