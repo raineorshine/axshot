@@ -51,7 +51,9 @@ A lifecycle prefix on the session title says what a session is doing while it is
 sidebar answers "which chat is holding the lock" without opening any of them. One prefix at a time,
 replaced rather than stacked, and never reported in the response. Every title carries one: a title
 without a prefix says nothing about the session, and the sidebar cannot tell it from a chat that
-never had a stage at all. A prefix comes off only when another replaces it, so a session that has
+never had a stage at all. A session is named by the harness and so begins without one; putting the
+first prefix on that inherited title is part of the first response, not something to wait for a
+stage change to prompt. A prefix comes off only when another replaces it, so a session that has
 nothing left to do keeps the one for the last stage it reached.
 
 | | |
@@ -69,8 +71,9 @@ Set a prefix when the stage *starts*, not when it succeeds, and correct it if th
 title that only becomes true at the end is blank for the whole stretch the sidebar is there to
 describe. `📚 ` goes on the moment a `learn` skill is invoked, before anything is read. The lock
 and ship prefixes are set by the skills that own them; the rest are set by hand, and nothing
-reconciles a title against reality — `🚙 ` in particular is worth setting before handing back, since
-the idle dot cannot tell "waiting on you" from "given up on".
+reconciles a title against reality. Handing back is itself a stage: a response that closes on
+something for the user to do — test it, look at it, decide — is a park, and `🚙 ` goes on before
+that response, since the idle dot cannot tell "waiting on you" from "given up on".
 
 This vocabulary, and the worktree-and-lock workflow around it, came from the sibling `karabiner`
 repo; its `docs/workflow.md` is where the reasoning lives, and where to look first when a convention

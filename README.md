@@ -12,8 +12,9 @@ Typing a hint holds the region rather than firing the shutter: everything outsid
 `Return` takes the shot. The arrows adjust what is held — `←` and `→` step to the neighbouring
 region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
 does not have to be retyped, and `HJKL` do the same four things so the hand can stay on the letters.
-`⌘Return` takes the shot to the clipboard instead of a file, whichever hotkey opened the session.
-`Delete` returns to the hints and `Escape` cancels.
+An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
+without typing a letter at all. `⌘Return` takes the shot to the clipboard instead of a file,
+whichever hotkey opened the session. `Delete` returns to the hints and `Escape` cancels.
 
 `⌘C` ends it the other way: the held region's text goes to the clipboard and no picture is taken.
 The words come from the same tree the box did — every text element inside the region, in document

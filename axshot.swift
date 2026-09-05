@@ -63,13 +63,20 @@
 // are the same region drawn bigger or smaller and are what the other two arrows are for -- while
 // Up widens to the smallest kept region containing this one, and Down returns to the region Up was
 // last looking at. Only kept candidates are offered, so Up is a visible widening rather than a walk
-// through the wrappers that repeat the same box. Down retraces an ascent rather than guessing at a
-// child, since a container holds many and containment does not say which; stepping sideways
-// abandons that memory, because what it remembers is no longer inside what is held. HJKL do the
-// same four things as the arrows: the held region is a selection being adjusted rather than text
+// through the wrappers that repeat the same box. Down prefers to retrace an ascent rather than
+// guess at a child, since a container holds many and containment does not say which; stepping
+// sideways abandons that memory, because what it remembers is no longer inside what is held. HJKL do
+// the same four things as the arrows: the held region is a selection being adjusted rather than text
 // being typed, so the hand does not have to leave the letters it just typed a hint with. They are
 // read as physical keys, in the same layout-independent way as the hotkeys, and only while a region
 // is held -- before that every letter is a hint.
+//
+// An arrow pressed with the hints still up holds the outermost region instead, which is where the
+// arrows can reach every other region from -- so the tree can be walked without ever picking a
+// letter, for when nothing lettered is close and reading the hints is more work than stepping. Only
+// the arrows do this, since HJKL are still hints until something is held. It is also the one place
+// Down has no ascent to retrace, so there it falls back to the held region's first child in document
+// order; without that the entry point would only ever lead outwards.
 //
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
@@ -602,6 +609,15 @@ final class Session {
       }
       return
     }
+    // An arrow with nothing held enters the tree rather than being ignored: the outermost region
+    // is the one place every other region can be reached from, and the arrows take it from there.
+    if [123, 124, 125, 126].contains(keyCode) {
+      guard !candidates.isEmpty else { NSSound.beep(); return }
+      typed = ""
+      descent = []
+      hold(0)
+      return
+    }
     if keyCode == 51 {  // delete
       if !typed.isEmpty { typed.removeLast(); refresh() }
       return
@@ -672,11 +688,16 @@ final class Session {
     hold(parent)
   }
 
-  /// Back in to whatever Up was last looking at. Containment alone would not say which child to
-  /// pick -- a container holds many -- so only the one that was actually left behind is offered.
+  /// Back in to whatever Up was last looking at, or, with no ascent to retrace, into the held
+  /// region's first child in document order. Containment alone would not say which child to pick --
+  /// a container holds many -- so a remembered descent always wins; the first child is only what
+  /// makes the tree reachable inward at all when the arrows entered at the outermost region rather
+  /// than at a hint.
   func descend() {
-    guard let child = descent.popLast() else { NSSound.beep(); return }
-    hold(child)
+    if let child = descent.popLast() { hold(child); return }
+    guard let index = heldIndex, candidates.indices.contains(index + 1),
+          candidates[index + 1].depth > candidates[index].depth else { NSSound.beep(); return }
+    hold(index + 1)
   }
 
   /// Back from the mask to the hints, with nothing typed.
