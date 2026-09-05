@@ -61,6 +61,17 @@ by its deadline if nothing ends it — and a second run started meanwhile puts t
 taps up at once, after which no key reaches the one being watched. A loop over several cases has to
 be serial even though each case is only a few seconds of keystrokes.
 
+Guard every posted key on the session still being alive. A driver that sleeps and then sends is
+sending to whatever is frontmost the moment the session has already ended — which is the user's
+window, where the hint letter, the arrow and the Return all land and submit. A `kill -0` on the
+backgrounded run before each key costs nothing, and is the difference between a test that reports
+nothing happened and one that types into someone's editor.
+
+A run that ends `cancelled=true` well before its deadline was Escaped by a person; the deadline is
+what an unattended run ends on. Once that has happened twice, and especially once `total_ms` shrinks
+from one run to the next — they are reacting faster each time to a full-screen overlay they did not
+ask for — stop driving and hand the build over. It is an answer, not a flake to retry through.
+
 Take the labels from a `--dump` run immediately before, and drive a window whose content is not
 moving. Labels are assigned over the candidates that run found, so a window that gains or loses
 regions between the dump and the drive re-letters everything — and once the count crosses the
