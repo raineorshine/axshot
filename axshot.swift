@@ -77,11 +77,11 @@
 // nothing.
 //
 // After the shutter, a thumbnail of the shot sits in the bottom right corner for a few seconds and
-// then slides off the right edge, the way macOS's own does: the shot is a region of a window rather than the window, so the
-// one thing worth confirming is which region landed. A click opens the file and dismisses it. It is
-// a non-activating panel, so it takes no more focus than the overlay does, and the next capture
-// dismisses it before walking rather than waiting for it to expire -- a toast still on screen is
-// something screencapture(1) would photograph.
+// then slides off the right edge, the way macOS's own does: the shot is a region of a window rather
+// than the window, so the one thing worth confirming is which region landed. A click opens the file
+// and dismisses it. It is a non-activating panel, so it takes no more focus than the overlay does,
+// and the next capture dismisses it before walking rather than waiting for it to expire -- a toast
+// still on screen is something screencapture(1) would photograph.
 //
 // The one time it is not an accessory is while the settings window is open: it turns regular so the
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the

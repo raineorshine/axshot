@@ -21,9 +21,9 @@ Two things follow, and both cost a full re-grant of both permissions:
   recreating the identity — to rename it, or because the key was lost — is a new certificate.
 
 Editing the source and recompiling is free — the requirement still matches and the grants hold,
-which is worth confirming after any change that touches signing. This is the entire reason `build.sh` signs with a stable identity
-rather than letting the linker sign ad-hoc, where the requirement pins a code hash that changes with
-every compile.
+which is worth confirming after any change that touches signing. This is the entire reason
+`build.sh` signs with a stable identity rather than letting the linker sign ad-hoc, where the
+requirement pins a code hash that changes with every compile.
 
 ## The CLI shares the app's grants, by construction
 

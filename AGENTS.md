@@ -62,11 +62,11 @@ through the next task.
 | `🚀 ` | shipping |
 | `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a hands-on look |
 | `🪦 ` | dead end — kept for the findings, not to resume |
-| `📚 ` | extracting learnings into `AGENTS.md` or `docs/` |
+| `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
 
 Set a prefix when the stage *starts*, not when it succeeds, and correct it if the stage falls over: a
 title that only becomes true at the end is blank for the whole stretch the sidebar is there to
-describe. `📚 ` goes on the moment the `learn` skill is invoked, before anything is read. The lock
+describe. `📚 ` goes on the moment a `learn` skill is invoked, before anything is read. The lock
 and ship prefixes are set by the skills that own them; the rest are set by hand, and nothing
 reconciles a title against reality — `🚙 ` in particular is worth setting before handing back, since
 the idle dot cannot tell "waiting on you" from "given up on".
@@ -98,7 +98,8 @@ explained where it is implemented.
 ## Changing the region filter
 
 `--dump` is the whole feedback loop: it prints what would be hinted, with the walk cost, and never
-draws an overlay. Tune against it before looking at pixels.
+draws an overlay. Tune against it before looking at pixels; [the README](README.md#tuning-the-filter)
+reads a sample of its output line by line.
 
 Prefer changing the filter's passes over changing `--min-size`. The tree is mostly nested containers
 that repeat their child's box, and the collapse that removes them is what decides whether the
