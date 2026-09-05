@@ -45,6 +45,13 @@
 // worth screenshotting, and it lets you pick what you can see rather than guess what the tree calls
 // it.
 //
+// Typing a hint holds the region rather than firing the shutter: everything outside it is masked,
+// corner brackets mark it, and Return takes the shot -- Preview's crop, without the grid. The
+// region comes from a tree the app describes rather than from a rectangle that was dragged, so the
+// one thing worth seeing before the capture is what the tree actually handed over; Delete goes back
+// to the hints and Escape cancels. The confirmation restarts the session deadline, which is what
+// keeps the tap from being timed out mid-decision.
+//
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
 // capturing it would photograph whatever is in that part of the screen instead, so it is dropped
@@ -386,11 +393,43 @@ let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
 final class HintView: NSView {
   var boxes: [(label: String, rect: CGRect)] = []
   var typed = ""
+  /// Set once a hint has been typed: the region is held, everything outside it is masked, and the
+  /// shutter waits for Return. Preview's crop, without the grid -- the point is to see what the
+  /// shot will contain while the target is still on screen to compare it against.
+  var selection: CGRect?
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
     NSColor.clear.set()
     dirtyRect.fill()
+
+    if let selection {
+      // Even-odd over the whole overlay minus the region, so the mask is one fill and the region
+      // is left completely untouched rather than drawn over at a low alpha.
+      let mask = NSBezierPath(rect: bounds)
+      mask.append(NSBezierPath(rect: selection))
+      mask.windingRule = .evenOdd
+      NSColor(calibratedWhite: 0, alpha: 0.55).setFill()
+      mask.fill()
+
+      // Corner brackets, drawn inside the region so they mark it without covering its edge pixels.
+      let arm = min(24, selection.width / 3, selection.height / 3)
+      let thickness: CGFloat = 3
+      let corners = NSBezierPath()
+      for (x, dx) in [(selection.minX, 1.0 as CGFloat), (selection.maxX, -1.0 as CGFloat)] {
+        for (y, dy) in [(selection.minY, 1.0 as CGFloat), (selection.maxY, -1.0 as CGFloat)] {
+          corners.move(to: CGPoint(x: x + dx * arm, y: y + dy * thickness / 2))
+          corners.line(to: CGPoint(x: x, y: y + dy * thickness / 2))
+          corners.move(to: CGPoint(x: x + dx * thickness / 2, y: y))
+          corners.line(to: CGPoint(x: x + dx * thickness / 2, y: y + dy * arm))
+        }
+      }
+      NSColor.white.setStroke()
+      corners.lineWidth = thickness
+      corners.stroke()
+      return
+    }
+
     for box in boxes where box.label.hasPrefix(typed) {
       NSColor(calibratedRed: 0.05, green: 0.05, blue: 0.05, alpha: 0.55).setStroke()
       let outline = NSBezierPath(rect: box.rect.insetBy(dx: 0.5, dy: 0.5))
@@ -426,13 +465,26 @@ final class Session {
   var labels: [String] = []
   var candidates: [Candidate] = []
   var typed = ""
+  /// The region a hint selected, held while the mask is up and the shutter waits for Return.
+  var held: Candidate?
   var chosen: Candidate?
   var cancelled = false
+  /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
+  var deadline: Date?
   var view: HintView!
 
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     if keyCode == 53 { cancelled = true; CFRunLoopStop(CFRunLoopGetCurrent()); return }  // escape
+    if held != nil {
+      if keyCode == 36 || keyCode == 76 {  // return, keypad enter
+        chosen = held
+        CFRunLoopStop(CFRunLoopGetCurrent())
+        return
+      }
+      if keyCode == 51 { release() }  // delete, back to the hints
+      return
+    }
     if keyCode == 51 {  // delete
       if !typed.isEmpty { typed.removeLast(); refresh() }
       return
@@ -447,10 +499,20 @@ final class Session {
     guard labels.contains(where: { $0.hasPrefix(attempt) }) else { NSSound.beep(); return }
     typed = attempt
     if let index = labels.firstIndex(of: typed) {
-      chosen = candidates[index]
-      CFRunLoopStop(CFRunLoopGetCurrent())
+      held = candidates[index]
+      view.selection = view.boxes[index].rect
+      deadline = Date().addingTimeInterval(30)
+      refresh()
       return
     }
+    refresh()
+  }
+
+  /// Back from the mask to the hints, with nothing typed.
+  func release() {
+    held = nil
+    typed = ""
+    view.selection = nil
     refresh()
   }
 
@@ -656,9 +718,10 @@ func runSession(_ options: Options) -> Outcome {
 
   // The tap swallows every key while it is up, so a session that somehow never ends would take the
   // keyboard with it. Run in slices and give up after this long rather than trusting it to stop.
-  let sessionDeadline = Date().addingTimeInterval(15)
+  var sessionDeadline = Date().addingTimeInterval(15)
   while session.chosen == nil && !session.cancelled && Date() < sessionDeadline {
     CFRunLoopRunInMode(.defaultMode, 0.25, false)
+    if let extended = session.deadline { sessionDeadline = extended; session.deadline = nil }
   }
 
   CGEvent.tapEnable(tap: tap, enable: false)
