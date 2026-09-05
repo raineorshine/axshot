@@ -65,7 +65,11 @@
 // last looking at. Only kept candidates are offered, so Up is a visible widening rather than a walk
 // through the wrappers that repeat the same box. Down retraces an ascent rather than guessing at a
 // child, since a container holds many and containment does not say which; stepping sideways
-// abandons that memory, because what it remembers is no longer inside what is held.
+// abandons that memory, because what it remembers is no longer inside what is held. HJKL do the
+// same four things as the arrows: the held region is a selection being adjusted rather than text
+// being typed, so the hand does not have to leave the letters it just typed a hint with. They are
+// read as physical keys, in the same layout-independent way as the hotkeys, and only while a region
+// is held -- before that every letter is a hint.
 //
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
@@ -589,10 +593,10 @@ final class Session {
       if keyCode == 51 { release() }  // delete, back to the hints
       if let index = heldIndex {
         switch keyCode {
-        case 123: step(from: index, by: -1)  // left
-        case 124: step(from: index, by: 1)  // right
-        case 126: ascend(from: index)  // up
-        case 125: descend()  // down
+        case 123, 4: step(from: index, by: -1)  // left, h
+        case 124, 37: step(from: index, by: 1)  // right, l
+        case 126, 40: ascend(from: index)  // up, k
+        case 125, 38: descend()  // down, j
         default: break
         }
       }
