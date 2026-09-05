@@ -54,7 +54,32 @@ view that refreshes itself is the worst case; a settings window is the easy one.
 
 A hotkey press that does not land is silent: no overlay appears and the session never starts. Look
 for the overlay before sending hints rather than assuming the chord arrived, and send it again if it
-did not.
+did not. A capture that lands is not proof of the press that started it either -- a chord swallowed
+while an overlay was already up leaves the *next* press to do the work, and the file appears all the
+same. When which press did what is the question, have the app answer it: a couple of lines appended
+to a file from the Carbon hotkey handler and from the tap callback separate "the event never
+arrived" from "the session started and stopped", which nothing on screen can.
+
+AppleScript can send a chord but cannot *hold* one. `key code` posts its down and its up a
+millisecond apart, and System Events' `key down` does not carry a modifier that a separate `key down
+option` is holding -- option plus `key down "4"` types `4`, not `¢`. So anything that turns on how
+long a key is down never happens under osascript, and the overlay is exactly such a thing: its tap
+is not created until the walk finishes, which is after a posted press has been released and before a
+real one has. A posted chord's key-up misses the tap entirely; a held one does not.
+
+Post the events yourself for those, from a process that already holds Accessibility -- which means
+axshot behind a throwaway option rather than a scratch binary, which would need a grant of its own:
+
+    let down = CGEvent(keyboardEventSource: CGEventSource(stateID: .hidSystemState),
+                       virtualKey: 21, keyDown: true)!
+    down.flags = [.maskCommand, .maskAlternate]
+    down.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 1.2)  // past the walk, so the tap is up before the release
+    // ... then the matching keyDown: false
+
+Run any such reproduction against a build *without* the fix before trusting it. One that passes
+either way is measuring something other than what it was written for, and it will go on passing
+after the fix for the same wrong reason.
 
 ## Driving the menu bar item and the settings window
 
