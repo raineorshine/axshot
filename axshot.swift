@@ -56,6 +56,10 @@
 // opens settings, held region or not, since the overlay is in the way of the menu bar and what a
 // shortcut needs changing for is generally the screen it was pressed on.
 //
+// The plates are a light grey gradient, and yellow is offered in settings for the pages busy enough
+// to lose a quiet plate in. Which one reads better is a property of the window underneath rather
+// than of the app, so it is a setting and not a rule.
+//
 // A hold has three ways out, and one hotkey, because which one a region wants is only clear once
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
 // same picture on the clipboard, and Command-Shift-C puts the region's *text* there instead and
@@ -587,6 +591,77 @@ func hintLabels(count: Int, alphabet: String) -> [String] {
 
 let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
 
+/// What a hint plate looks like. The plates sit on top of whatever the target window is showing, so
+/// which one reads best is a property of the screen underneath rather than of the app: the grey is
+/// quiet enough not to be the first thing the eye lands on, and the yellow is loud enough to be
+/// found on a page dense enough to lose a plate in.
+enum HintStyle: String, CaseIterable {
+  /// The default. A light grey plate, shaded top to bottom: flat grey on a grey window is the one
+  /// background this has to survive, and a gradient gives the plate an edge that a single tone
+  /// does not.
+  case grey
+  /// The original, for a page busy enough that a quiet plate is one more thing to find.
+  case yellow
+
+  var title: String {
+    switch self {
+    case .grey: return "Grey gradient"
+    case .yellow: return "Yellow"
+    }
+  }
+
+  private var letter: NSColor {
+    switch self {
+    case .grey: return NSColor(calibratedWhite: 0.1, alpha: 1)
+    case .yellow: return .black
+    }
+  }
+
+  private var border: NSColor {
+    switch self {
+    case .grey: return NSColor(calibratedWhite: 0.45, alpha: 0.9)
+    case .yellow: return NSColor(calibratedRed: 0.35, green: 0.25, blue: 0.0, alpha: 0.9)
+    }
+  }
+
+  /// The space around the letters, which is what makes a plate bigger than its text.
+  private static let padding: CGFloat = 3
+
+  func plateSize(_ label: String) -> CGSize {
+    let size = plateText(label).size()
+    return CGSize(width: size.width + Self.padding * 2, height: size.height + Self.padding * 2)
+  }
+
+  private func plateText(_ label: String) -> NSAttributedString {
+    NSAttributedString(string: label, attributes: [.font: hintFont, .foregroundColor: letter])
+  }
+
+  /// Draws one plate with its top-left corner at `topLeft`. The settings swatches draw through this
+  /// too, so a style is defined in one place and a swatch cannot come to disagree with the overlay
+  /// it is a picture of.
+  func drawPlate(_ label: String, topLeft: CGPoint) {
+    let size = plateSize(label)
+    let plate = CGRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height)
+    let rounded = NSBezierPath(roundedRect: plate, xRadius: 3, yRadius: 3)
+    switch self {
+    case .grey:
+      // Downwards, which is where the light is: the plate reads as raised rather than as a
+      // rectangle someone forgot to colour in.
+      NSGradient(
+        starting: NSColor(calibratedWhite: 0.97, alpha: 0.96),
+        ending: NSColor(calibratedWhite: 0.78, alpha: 0.96))?
+        .draw(in: rounded, angle: -90)
+    case .yellow:
+      NSColor(calibratedRed: 1.0, green: 0.85, blue: 0.35, alpha: 0.96).setFill()
+      rounded.fill()
+    }
+    border.setStroke()
+    rounded.lineWidth = 1
+    rounded.stroke()
+    plateText(label).draw(at: CGPoint(x: plate.minX + Self.padding, y: plate.minY + Self.padding))
+  }
+}
+
 final class HintView: NSView {
   var boxes: [(label: String, rect: CGRect)] = []
   var typed = ""
@@ -714,26 +789,10 @@ final class HintView: NSView {
       return
     }
 
+    let style = Settings.hintStyle
     for box in boxes where box.label.hasPrefix(typed) {
       let remaining = String(box.label.dropFirst(typed.count))
-      let text = NSAttributedString(string: remaining.uppercased(), attributes: [
-        .font: hintFont,
-        .foregroundColor: NSColor.black,
-      ])
-      let size = text.size()
-      let padding: CGFloat = 3
-      let plate = CGRect(
-        x: box.rect.minX,
-        y: box.rect.maxY - (size.height + padding * 2),
-        width: size.width + padding * 2,
-        height: size.height + padding * 2)
-      let rounded = NSBezierPath(roundedRect: plate, xRadius: 3, yRadius: 3)
-      NSColor(calibratedRed: 1.0, green: 0.85, blue: 0.35, alpha: 0.96).setFill()
-      rounded.fill()
-      NSColor(calibratedRed: 0.35, green: 0.25, blue: 0.0, alpha: 0.9).setStroke()
-      rounded.lineWidth = 1
-      rounded.stroke()
-      text.draw(at: CGPoint(x: plate.minX + padding, y: plate.minY + padding))
+      style.drawPlate(remaining.uppercased(), topLeft: CGPoint(x: box.rect.minX, y: box.rect.maxY))
     }
   }
 
@@ -1854,6 +1913,13 @@ enum Settings {
     (UserDefaults.standard.string(forKey: "saveDirectory") ?? "").isEmpty
   }
 
+  /// How the hint plates are drawn. Stored by name rather than by index, so a style added or
+  /// reordered later does not silently repoint what someone already chose.
+  static var hintStyle: HintStyle {
+    get { HintStyle(rawValue: UserDefaults.standard.string(forKey: "hintStyle") ?? "") ?? .grey }
+    set { UserDefaults.standard.set(newValue.rawValue, forKey: "hintStyle") }
+  }
+
   /// Forgets a chosen folder. Choosing one is otherwise a one-way door: the panel always writes a
   /// path, so without this the folder macOS is using can never be got back to by name.
   static func followSystemFolder() {
@@ -2019,11 +2085,74 @@ final class RecorderView: NSView {
   }
 }
 
+/// One hint style, drawn as the plate it actually produces. A menu names the styles and leaves the
+/// choosing to be done from memory of what the names look like; the thing being chosen here is a
+/// picture, so the control is the picture, and the choice is made by pointing at the one you want.
+final class SwatchView: NSView {
+  let style: HintStyle
+  var isSelected: Bool { didSet { needsDisplay = true } }
+  var onSelect: ((HintStyle) -> Void)?
+
+  /// The app's own initials, since the letters on a swatch stand for nothing -- a real hint label
+  /// would read as the hint it is not.
+  private let sample = "AX"
+
+  init(style: HintStyle, isSelected: Bool) {
+    self.style = style
+    self.isSelected = isSelected
+    super.init(frame: .zero)
+    translatesAutoresizingMaskIntoConstraints = false
+    toolTip = style.title
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { false }
+
+  /// A plate, and room for the ring that marks the chosen one. No name beside it: the plate is what
+  /// the setting is, and a word next to a picture of the thing it names is the picture repeated
+  /// worse. The name is still on the swatch for anything that cannot see it -- the tooltip, and the
+  /// accessibility tree.
+  override var intrinsicContentSize: NSSize { NSSize(width: 44, height: 34) }
+
+  override func mouseDown(with event: NSEvent) { onSelect?(style) }
+
+  // Named and pressable through the accessibility tree, which is how a screen reader reaches a
+  // plain NSView and how this window is driven with no one at the keyboard. Without these the
+  // swatches are a picture with nothing behind it.
+  override func isAccessibilityElement() -> Bool { true }
+  override func accessibilityRole() -> NSAccessibility.Role? { .radioButton }
+  // Title as well as label: a script addresses `radio button "Yellow"` by title, and a label alone
+  // leaves the name reading `missing value` there.
+  override func accessibilityTitle() -> String? { style.title }
+  override func accessibilityLabel() -> String? { style.title }
+  override func accessibilityValue() -> Any? { isSelected }
+  override func accessibilityPerformPress() -> Bool { onSelect?(style); return true }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let size = style.plateSize(sample)
+    let plate = CGRect(
+      x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
+      width: size.width, height: size.height)
+    // No card behind it. A plate is drawn straight onto whatever app is being captured, so a
+    // swatch that sat it on a panel of its own would be showing something the overlay never does;
+    // the ring is the only thing here that is not the setting itself.
+    if isSelected {
+      let ring = NSBezierPath(roundedRect: plate.insetBy(dx: -5, dy: -5), xRadius: 7, yRadius: 7)
+      NSColor.controlAccentColor.setStroke()
+      ring.lineWidth = 2
+      ring.stroke()
+    }
+    style.drawPlate(sample, topLeft: CGPoint(x: plate.minX, y: plate.maxY))
+  }
+}
+
 final class SettingsWindow: NSWindowController {
   private var recorder: RecorderView!
   private let folder = NSTextField(labelWithString: "")
   private let resetFolder = NSButton(title: "Reset", target: nil, action: nil)
   private let status = NSTextField(labelWithString: "")
+  private var swatches: [SwatchView] = []
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
   private var permissionTimer: Timer?
   /// When each permission was last asked for, so a request that visibly did nothing can offer the
@@ -2036,7 +2165,7 @@ final class SettingsWindow: NSWindowController {
     // its content: a row added or removed here is a row's worth of height to adjust by hand, or the
     // window keeps a gap where the row was.
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 500, height: 350),
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 398),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
     self.init(window: window)
@@ -2056,6 +2185,18 @@ final class SettingsWindow: NSWindowController {
       recorder.widthAnchor.constraint(equalToConstant: 190),
       recorder.heightAnchor.constraint(equalToConstant: 36),
     ])
+    let styleCaption = NSTextField(labelWithString: "Hint style")
+    styleCaption.font = .systemFont(ofSize: 13)
+    swatches = HintStyle.allCases.map { style in
+      let swatch = SwatchView(style: style, isSelected: style == Settings.hintStyle)
+      swatch.onSelect = { [weak self] chosen in self?.chooseHintStyle(chosen) }
+      return swatch
+    }
+    let styleRow = NSStackView(views: [styleCaption] + swatches)
+    styleRow.orientation = .horizontal
+    styleRow.spacing = 10
+    styleCaption.widthAnchor.constraint(equalToConstant: 150).isActive = true
+
     folder.font = .systemFont(ofSize: 12)
     folder.textColor = .secondaryLabelColor
     // Truncate the head: the tail of a path is the part that identifies it.
@@ -2116,7 +2257,7 @@ final class SettingsWindow: NSWindowController {
     relaunchRow.spacing = 12
 
     let stack = NSStackView(
-      views: [hotKeyRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
+      views: [hotKeyRow, styleRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -2230,6 +2371,14 @@ final class SettingsWindow: NSWindowController {
     guard panel.runModal() == .OK, let url = panel.url else { return }
     Settings.saveDirectory = url.path
     refreshFolder()
+  }
+
+  /// Takes effect at the next capture. Nothing is on screen to redraw but the swatches themselves:
+  /// the overlay only exists while a session is up, and settings cannot be reached from one without
+  /// ending it.
+  private func chooseHintStyle(_ style: HintStyle) {
+    Settings.hintStyle = style
+    for swatch in swatches { swatch.isSelected = swatch.style == style }
   }
 
   @objc private func toggleLaunch(_ sender: NSButton) {
