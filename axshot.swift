@@ -66,9 +66,10 @@
 // otherwise -- and it is the app's own chrome that it themes, not the plates: this window, its menu
 // bar, the status item's menu, an alert. The two are separate settings because they answer to
 // different things. A plate sits on top of another app's window and is chosen for what is
-// underneath it; these windows sit on the desktop with everything else. Which is also why the
-// theme stops where the drawing over other apps starts: the overlay, the key sheet and the toast
-// state their colours outright and stay as they are.
+// underneath it; these windows sit on the desktop with everything else. The theme reaches one
+// thing that is drawn over another app -- the key sheet, which is a page of the app's own text and
+// nothing to do with the window behind it. The overlay and the toast state their colours outright
+// and stay as they are: a mask that went light with the desktop would stop masking.
 //
 // A hold has three ways out, and one hotkey, because which one a region wants is only clear once
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
@@ -854,6 +855,14 @@ final class HintView: NSView {
 /// callers that frame it differently -- the overlay centres it on a screen it is already filling,
 /// and the menu bar opens a window that is the sheet and nothing else.
 enum HelpSheet {
+  /// The sheet is the one thing drawn over another app that follows the theme, because it is a page
+  /// of text rather than a mark on the screen underneath: nothing about it has to stay dark for the
+  /// masking to keep working. Read from the application rather than from the view being drawn into,
+  /// so the picture is the same one whether the caller is the overlay or the menu bar's window.
+  private static var isDark: Bool {
+    NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+  }
+
   private static let keyFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
   private static let textFont = NSFont.systemFont(ofSize: 12)
   private static let headingFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
@@ -893,9 +902,12 @@ enum HelpSheet {
     ]
   }
 
+  /// The same alphas either way round: they are how much of a row is heading, key or prose, and
+  /// that ranking does not change with the ground it is set on -- only which end of the scale the
+  /// ink starts from.
   private static func run(_ string: String, _ font: NSFont, _ alpha: CGFloat) -> NSAttributedString {
     NSAttributedString(string: string, attributes: [
-      .font: font, .foregroundColor: NSColor(calibratedWhite: 1, alpha: alpha),
+      .font: font, .foregroundColor: NSColor(calibratedWhite: isDark ? 1 : 0, alpha: alpha),
     ])
   }
 
@@ -933,9 +945,11 @@ enum HelpSheet {
     let keyColumn = sections.flatMap { $0.1 }.map { keys($0.0).size().width }.max() ?? 0
 
     let rounded = NSBezierPath(roundedRect: panel, xRadius: 10, yRadius: 10)
-    NSColor(calibratedWhite: 0.08, alpha: 0.96).setFill()
+    // Not quite white on the light side: the sheet is read against the desktop or against the
+    // overlay's dimming, and a pure white page has no edge of its own on either.
+    NSColor(calibratedWhite: isDark ? 0.08 : 0.97, alpha: 0.96).setFill()
     rounded.fill()
-    NSColor(calibratedWhite: 1, alpha: 0.18).setStroke()
+    NSColor(calibratedWhite: isDark ? 1 : 0, alpha: 0.18).setStroke()
     rounded.lineWidth = 1
     rounded.stroke()
 
@@ -1951,10 +1965,12 @@ enum Theme: String, CaseIterable {
 
   /// Set on the application, so it reaches what is already on screen and whatever is opened later.
   /// What it reaches is whatever asked for a semantic colour, which is this window and the menus and
-  /// panels around it; the overlay, the key sheet and the toast name their colours outright and are
-  /// unmoved. That is the line rather than an oversight -- those three are drawn over another app's
-  /// window rather than beside it, and a mask that went light with the desktop would stop masking.
-  /// The sheet is the same picture from the menu bar as it is mid-session for the same reason.
+  /// panels around it, plus the key sheet, which reads the resolved appearance back off the
+  /// application and colours itself by hand. The overlay and the toast name their colours outright
+  /// and are unmoved: they are marks on somebody else's window rather than pages of their own, and a
+  /// mask that went light with the desktop would stop masking. The sheet is the same picture from
+  /// the menu bar as it is mid-session, so a theme it followed in one place and not the other would
+  /// be two sheets.
   func apply() {
     NSApp.appearance = appearance
   }
