@@ -117,6 +117,11 @@ explained where it is implemented.
   title bar inactive, and the screenshot would show that.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
   system-wide and the only one needing no permission.
+- **Escape is taken in `keyDown`, never `cancelOperation`.** AppKit only sends `cancelOperation:`
+  once some responder has interpreted the key event, and none of this app's windows edits text, so
+  in a plain `NSWindow` the keystroke stays a `keyDown` that walks the responder chain and dies
+  there unhandled. Both windows take it at the last step of that walk instead, which also leaves it
+  behind whatever wanted the key first.
 
 ## Changing the region filter
 
