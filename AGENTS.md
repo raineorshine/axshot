@@ -89,6 +89,15 @@ explained where it is implemented.
   accessibility engine switched on for as long as the app runs.
 - **Only regions that are actually on screen are offered**, clipped to the focused window. An
   element scrolled out of view has a frame that would photograph something else.
+- **Only text that was on screen is copied.** The tree carries names written for screen readers
+  alongside the words a person can read, and no attribute separates them — the same field holds a
+  button's visible label and an icon's stand-in name — so the test is whether the text would have
+  fitted in its own element. A geometric answer to a question the tree does not answer.
+- **A key is matched by its position or by its letter, according to which one it is.** HJKL and the
+  hotkey chords are hand shapes and are read as physical keys, so they stay where the hand is on any
+  layout; a key chosen because of the word it stands for is read as the letter the layout types, so
+  it stays where the word is. Adding a key means deciding which of the two it is before deciding
+  where it goes.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
 - **The arrows are two axes, not four directions.** Up and Down move along the held region's own

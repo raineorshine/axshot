@@ -194,7 +194,11 @@ own Screen Recording grant — then send Escape:
     osascript -e 'tell application "System Events" to key code 53'
 
 This is the only way to check hint placement and density, and it is worth doing after any change to
-the filter.
+the filter. It is also the only way to check anything the overlay *draws*, and the trap is that a
+capture looks like evidence: the overlay is ordered out before every shot, so the PNG is identical
+whether the drawing under test appeared or not, and a run that ends in a file proves the session
+reached the shutter and nothing more. The outcome line is the same kind of claim — it says which
+region the session ended on, not what was on top of it.
 
 Anything smaller than the overlay — the corner thumbnail, a badge, a bracket — does not survive a
 whole screen shrunk to fit. Capture the screen whole and crop afterwards rather than guessing a
@@ -208,6 +212,16 @@ Timing is the other half of it. Something that shows for a few seconds and then 
 be photographed at three moments — up, mid-animation, gone — and appending the crops side by side
 (`magick a.png b.png c.png +append`) is what makes the sequence one thing to look at rather than
 three.
+
+## Asking what the tree actually says
+
+`--dump` prints one label per element, already collapsed to a line, so it answers which regions
+would be hinted and not where any of their words came from. When the question is about the text a
+copy would give — why a name nobody can see is in it, which attribute supplied it, which elements
+were recursed into — nothing exposes that, and reading the walk instead of the tree is how a
+heuristic gets built against a guess. Print it: a throwaway option that walks one candidate and
+dumps each element's role, child count and every text attribute it carries answers in one run what
+a dozen driven copies only hint at. It comes back out with the same commit that used it.
 
 ## Failures that are the environment, not the code
 
