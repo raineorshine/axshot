@@ -15,7 +15,9 @@ does not have to be retyped, and `HJKL` do the same four things so the hand can 
 An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
 without typing a letter at all. `Delete` returns to the hints; `Escape` — or a second tap of the
 hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
-bar it would otherwise take to get there.
+bar it would otherwise take to get there. `?` puts the whole list of keys on screen — the
+overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
+down on `?` or `Escape`.
 
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:

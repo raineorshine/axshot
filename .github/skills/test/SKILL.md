@@ -41,8 +41,9 @@ lock only once you are about to put a build in the live slot.
 ./scripts/axshot-test-lock.sh status
 ```
 
-It prints the holder and everyone queued behind them. **Never wait in a loop** — `wait` blocks in
-the kernel and the queue is ordered, so a polling loop would only burn turns and jump people.
+If another session holds it, **do not wait in a loop.** The lock names the holding session, so tell
+the user which chat it is and how long it has held it, then either carry on with lock-free work or
+ask them — they are the one whose keyboard is involved.
 
 ### 2. Acquire
 
@@ -50,43 +51,19 @@ Prefix this session's title with `🔓 ` first (`set_session_title`, replacing a
 prefix — see AGENTS.md "Session titles"). Set it before the acquire, not after: if the acquire is
 denied, drop the prefix again. Do not report this.
 
-Take it with `wait`, in the background, whether or not the lock looked free:
-
 ```bash
-./scripts/axshot-test-lock.sh wait "what you are testing" "<this session's title>"
+./scripts/axshot-test-lock.sh acquire "what you are testing" "<this session's title>"
 ```
 
-Free lock: it acquires and exits immediately. Held: this session takes a ticket and blocks until its
-turn, and the run exits — notifying the session — the moment it holds the lock. Run it with
-`run_in_background` so the wait costs nothing; the notification is the signal to carry on at step 3.
-Waiting sessions are served in arrival order, and a plain `acquire` refuses to jump them.
+Snapshots the installed app and records whether it was running. Re-running from the same worktree is
+a no-op and will not re-snapshot, so an interrupted session can resume.
 
-It can also come back without the lock, and the exit says which: `acquired` on the last line means
-step 3. `GAVE UP` means the wait hit its half-hour bound — the report says what it was waiting on,
-and that goes to the user rather than being broken open here. And `this ticket was cleared` means
-someone ran `dequeue`; re-run `wait` to take a new place.
-
-Either way it snapshots the installed app and records whether it was running. Re-running from the
-same session is a no-op and will not re-snapshot, so an interrupted session can resume — but a
-*second* session on the same worktree is queued like any other, not handed the first one's lock.
-
-Once it reports `acquired`, swap the prefix to `🔒 `. Do not report this.
-
-**A queued session is parked, not idle.** Stay `🔓 ` — it means "about to take the lock" — and say
-which session is ahead. Do the lock-free work in the meantime (`--dump`, editing, reading), but do
-not build: `build.sh` installs, and the install is what the lock exists to serialise. Cancelling the
-background task leaves the queue.
+Once the acquire succeeds, swap the prefix to `🔒 `. Do not report this.
 
 ### 3. Build and install
 
-Rebase first if the branch is behind. A worktree here can be many commits behind `origin/main` while
-carrying nothing of its own — several land during a single test — and `build.sh` compiles what the
-worktree has, so installing without rebasing puts superseded `axshot.swift` in the live slot and
-everything after this step measures code that main replaced. Commit first if the tree is dirty: a
-rebase refuses one, and the stash is shared with every other worktree.
-
 ```bash
-git fetch origin && git rebase origin/main && ./build.sh
+./build.sh
 ```
 
 The signing line must read `signed by Axshot Local Signing`. If it says `signed by -`, the build fell
@@ -185,11 +162,6 @@ Release first, then follow the `ship` skill.
   has happened the snapshot cannot restore what was lost; put the app back with a second lock cycle
   that builds the source it should be running — `git show main:axshot.swift > axshot.swift`,
   `./build.sh`, restore the branch's file, then `release --keep` so the release does not undo it.
-- **A worktree older than the queue releases without handing over.** The waking is done by the
-  *holder's* copy of `axshot-test-lock.sh`; a session on a branch from before it drops the lock
-  silently, and whoever is queued sleeps through their turn until some other release signals. If a
-  wait outlives the release that should have ended it, `status` shows the lock free with the queue
-  still standing — rebase that worktree on main.
 - **Do not build on main while another worktree holds the lock.** `install` refuses, so the build
   succeeds and the install does not — read the output rather than assuming it landed.
 
@@ -205,22 +177,6 @@ first:
 Breaking a lock that is *not* stale requires confirming with the user that no test is in flight,
 then `AXSHOT_LOCK_STALE=0 ./scripts/axshot-test-lock.sh break`. Never on a hunch — the holder is
 mid-test.
-
-`break` recovers the lock and not the queue. A ticket whose waiting session is gone is pruned on
-sight, but one whose recorded pid has been reused — across a reboot, say — looks alive forever, and
-while it sits at the head every `acquire` is refused and every `wait` blocks behind a session that
-does not exist. Clear it with:
-
-```bash
-./scripts/axshot-test-lock.sh dequeue
-```
-
-It wakes the sessions it clears, so each one exits saying its ticket was cleared rather than sleeping
-on a queue that is gone — but they do lose their place, so read the list it prints before running it.
-
-If the acquire itself was interrupted, the snapshot inside the lock is half a copy. `release` and
-`break` both say so and leave the live app alone rather than putting a broken bundle where the
-working one was; `release --keep` is how that lock comes off.
 
 If everything is wedged, the snapshot is a plain bundle at
 `.claude/axshot-test.lock/Axshot.app.pre`; copy it over `/Applications/Axshot.app` by hand and

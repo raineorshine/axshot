@@ -130,6 +130,16 @@
 // Down has no ascent to retrace, so there it falls back to the held region's first child in document
 // order; without that the entry point would only ever lead outwards.
 //
+// A question mark puts the whole list of keys on screen, grouped by whether it is the hints or a
+// held region that reads them, and dims what is behind it. There is nowhere else to put a legend:
+// the overlay covers the screen and the keys are the only interface it has, so the sheet is drawn
+// where the eye is and taken back down by the key that raised it -- or by Escape, which a panel is
+// entitled to before the thing behind the panel is. While it is up every other key is swallowed
+// rather than acted on, since a letter typed under the sheet would hold a region the reader cannot
+// see. The hotkey is spelled out on it as settings spells it, being the one key on the list that is
+// not the same on every machine. It is the character `?` as the layout types it, not the key Shift
+// and slash sit on -- a key picked for what it means, like Shift-J.
+//
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
 // capturing it would photograph whatever is in that part of the screen instead, so it is dropped
@@ -591,12 +601,25 @@ final class HintView: NSView {
   /// instead would photograph the same pixels, but the region would visibly unmask and re-mask
   /// around the shutter, which is a flash the join key never has.
   var bare = false
+  /// Set while `?` is asking for the shortcut list, which is drawn over whatever is underneath it.
+  var help = false
+  /// The hotkey as settings spells it. It is one of the keys the list names -- a second tap cancels
+  /// -- and it is not the same chord on every machine.
+  var hotkey: String?
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
     NSColor.clear.set()
     dirtyRect.fill()
 
+    drawRegions()
+    // Never over a shutter. Nothing can fire one while the sheet is up -- every other key is
+    // swallowed -- but the sheet is the one thing on the overlay large enough that drawing it into
+    // a photograph would go unnoticed until someone opened the file.
+    if help && !bare { drawHelp() }
+  }
+
+  private func drawRegions() {
     if let selection {
       // Even-odd over the whole overlay minus the region, so the mask is one fill and the region
       // is left completely untouched rather than drawn over at a low alpha.
@@ -705,11 +728,115 @@ final class HintView: NSView {
       text.draw(at: CGPoint(x: plate.minX + padding, y: plate.minY + padding))
     }
   }
+
+  /// The shortcut list, laid over the middle of the overlay. Grouped by when each key applies
+  /// rather than listed alphabetically: the hints and a held region take different keys, and the
+  /// sheet is read in the middle of one or the other. Everything behind it is dimmed, since the
+  /// keys it names are the ones that would otherwise be typed at the hints underneath.
+  private func drawHelp() {
+    let sections: [(String, [(String, String)])] = [
+      ("Hints", [
+        ("a-z", "select the region based on the hint letters"),
+      ]),
+      ("Selected Region", [
+        ("\u{21A9}", "save screenshot"),
+        ("\u{2318}C", "copy image"),
+        ("\u{2318}\u{21E7}C", "copy text"),
+        ("\u{21E7}J", "join text into one line"),
+        ("\u{21E7}T", "transcribe the text in the image"),
+        ("\u{2190} \u{2192} or H L", "select the next/prev region"),
+        ("\u{2191} or K", "select the parent region"),
+        ("\u{2193} or J", "select the child region"),
+      ]),
+      ("Any time", [
+        ("esc or " + (hotkey ?? ""), "cancel"),
+        ("\u{2318},", "settings"),
+        ("?", "keyboard shortcuts (you are here)"),
+      ]),
+    ]
+
+    let keyFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
+    let textFont = NSFont.systemFont(ofSize: 12)
+    let headingFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    func run(_ string: String, _ font: NSFont, _ alpha: CGFloat) -> NSAttributedString {
+      NSAttributedString(string: string, attributes: [
+        .font: font, .foregroundColor: NSColor(calibratedWhite: 1, alpha: alpha),
+      ])
+    }
+
+    /// The alternatives on a row are two ways of pressing the same thing, and the word between them
+    /// is prose rather than a key: set in the text font so the row reads as "this key or that one"
+    /// and not as a chord with letters in it.
+    func keys(_ chord: String) -> NSAttributedString {
+      let line = NSMutableAttributedString()
+      for (index, part) in chord.components(separatedBy: " or ").enumerated() {
+        if index > 0 { line.append(run("  or  ", textFont, 0.45)) }
+        line.append(run(part, keyFont, 1))
+      }
+      return line
+    }
+
+    let padding: CGFloat = 30
+    /// Less above the first heading than below the last row: a heading is set small and its own
+    /// ascent already leaves a gap that the rows underneath do not.
+    let topPadding: CGFloat = 22
+    let gap: CGFloat = 16
+    let rowHeight: CGFloat = 19
+    let headingHeight: CGFloat = 20
+    let headingGap: CGFloat = 6
+    let sectionGap: CGFloat = 22
+    let rows = sections.flatMap { $0.1 }
+    let keyColumn = rows.map { keys($0.0).size().width }.max() ?? 0
+    let textColumn = max(
+      rows.map { run($0.1, textFont, 1).size().width }.max() ?? 0,
+      sections.map { run($0.0, headingFont, 1).size().width }.max() ?? 0)
+    let height = topPadding + padding + sections.reduce(-sectionGap) { total, section in
+      total + headingHeight + headingGap + CGFloat(section.1.count) * rowHeight + sectionGap
+    }
+    let panel = CGRect(x: (bounds.width - (padding * 2 + keyColumn + gap + textColumn)) / 2,
+                       y: (bounds.height - height) / 2,
+                       width: padding * 2 + keyColumn + gap + textColumn,
+                       height: height)
+
+    NSColor(calibratedWhite: 0, alpha: 0.45).setFill()
+    bounds.fill()
+    let rounded = NSBezierPath(roundedRect: panel, xRadius: 10, yRadius: 10)
+    NSColor(calibratedWhite: 0.08, alpha: 0.96).setFill()
+    rounded.fill()
+    NSColor(calibratedWhite: 1, alpha: 0.18).setStroke()
+    rounded.lineWidth = 1
+    rounded.stroke()
+
+    var y = panel.maxY - topPadding
+    for (heading, rows) in sections {
+      y -= headingHeight
+      // Centred over the whole panel rather than started at the key column: a heading names the
+      // block under it, and the two columns beneath it have their own edges to line up on.
+      let title = run(heading, headingFont, 0.45)
+      title.draw(at: CGPoint(x: panel.midX - title.size().width / 2, y: y))
+      y -= headingGap
+      for (chord, what) in rows {
+        y -= rowHeight
+        let key = keys(chord)
+        key.draw(at: CGPoint(x: panel.minX + padding + keyColumn - key.size().width, y: y))
+        run(what, textFont, 0.8).draw(at: CGPoint(x: panel.minX + padding + keyColumn + gap, y: y))
+      }
+      y -= sectionGap
+    }
+  }
 }
 
 /// The letter a key event types, as the layout has it -- which is not where the key sits. Hints are
 /// matched on this, and so is the join key: both are letters someone read off a screen or was told,
 /// rather than positions the hand already knows.
+/// Whether this event is a question mark. Posted key events do not all carry the shifted character
+/// -- some report the letter the key sits on and leave the flags to say what was done to it -- so a
+/// shifted slash is read as the same question the character would have asked.
+func questionMark(_ event: CGEvent) -> Bool {
+  let letter = typedLetter(event)
+  return letter == "?" || (event.flags.contains(.maskShift) && letter == "/")
+}
+
 func typedLetter(_ event: CGEvent) -> String? {
   var length = 0
   var characters = [UniChar](repeating: 0, count: 4)
@@ -766,6 +893,10 @@ final class Session {
   /// The chord that opened this session. The tap is inserted ahead of the hotkey manager, so it
   /// sees that chord before Carbon does and a second press can close what the first opened.
   var cancelChord: Chord?
+  /// Set while the shortcut list is up. It is a toggle on `?`, and while it is up every other key
+  /// is swallowed rather than acted on: the list covers the hints, and a letter typed under it
+  /// would hold a region the reader cannot see.
+  var help = false
   /// Set when Command-comma ended the session: the overlay comes down and the settings window goes
   /// up, so the shortcut that opens preferences everywhere else reaches them from the hints too.
   var settings = false
@@ -775,7 +906,14 @@ final class Session {
 
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-    if keyCode == 53 { cancelled = true; CFRunLoopStop(CFRunLoopGetCurrent()); return }  // escape
+    // Escape, which the shortcut list takes first: a panel is dismissed by it before the thing
+    // behind the panel is, and a sheet opened to read is not a session anybody meant to abandon.
+    if keyCode == 53 {  // escape
+      if help { help = false; refresh(); return }
+      cancelled = true
+      CFRunLoopStop(CFRunLoopGetCurrent())
+      return
+    }
     // The hotkey again, at any point: a press that turned out to be a mistake is undone by
     // repeating it, without the hand having to find Escape. This has to come before the Command
     // branch below, which would otherwise swallow a chord carrying Command and do nothing with it.
@@ -783,6 +921,19 @@ final class Session {
        carbonModifiers(event.flags) == chord.modifiers {
       cancelled = true
       CFRunLoopStop(CFRunLoopGetCurrent())
+      return
+    }
+    // The shortcut list, in either state and before everything below it, since what it draws
+    // covers the keys the rest of this reads. `?` as the layout types it rather than the key Shift
+    // and slash sit on, for the same reason Shift-J is a letter: it was picked for what it means.
+    if help {
+      if questionMark(event) { help = false; refresh() }
+      return
+    }
+    if questionMark(event) {
+      help = true
+      deadline = Date().addingTimeInterval(30)
+      refresh()
       return
     }
     // The two chords that end a hold, and nothing else: every other chord under Command is
@@ -1046,6 +1197,8 @@ final class Session {
   func refresh() {
     view.typed = typed
     view.joined = joined
+    view.help = help
+    view.hotkey = cancelChord?.display
     view.needsDisplay = true
   }
 }
