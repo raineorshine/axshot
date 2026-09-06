@@ -62,6 +62,14 @@
 // list runs from the ones that leave the window as the thing being looked at to the ones that no
 // interface has anywhere else on screen.
 //
+// Settings also carries a theme -- System, Light, Dark, following macOS unless it is told
+// otherwise -- and it is the app's own chrome that it themes, not the plates: this window, its menu
+// bar, the status item's menu, an alert. The two are separate settings because they answer to
+// different things. A plate sits on top of another app's window and is chosen for what is
+// underneath it; these windows sit on the desktop with everything else. Which is also why the
+// theme stops where the drawing over other apps starts: the overlay, the key sheet and the toast
+// state their colours outright and stay as they are.
+//
 // A hold has three ways out, and one hotkey, because which one a region wants is only clear once
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
 // same picture on the clipboard, and Command-Shift-C puts the region's *text* there instead and
@@ -1908,6 +1916,50 @@ final class HotKey {
   }
 }
 
+/// Light or dark for the app's own chrome -- the settings window, its menu bar, the status item's
+/// menu, an alert. Unset it follows macOS, which is what an app that is mostly a menu bar item
+/// should do until it is told otherwise; the two named cases are for a desktop left on one theme by
+/// someone who wants this window on the other.
+///
+/// Nothing to do with the hint style, which is why they are two settings rather than one. A plate
+/// is drawn on top of somebody else's window and answers to what is underneath it; these windows
+/// are the app's own and answer to the rest of the desktop. Dark plates on a light app, or the
+/// other way about, is a pairing a screen can call for.
+enum Theme: String, CaseIterable {
+  /// The default: whatever macOS is currently doing, and it follows a change made while running.
+  case system
+  case light
+  case dark
+
+  var title: String {
+    switch self {
+    case .system: return "System"
+    case .light: return "Light"
+    case .dark: return "Dark"
+    }
+  }
+
+  /// `nil` is already AppKit's word for "follow the system", which is why `system` is a case here
+  /// rather than the absence of a stored value.
+  private var appearance: NSAppearance? {
+    switch self {
+    case .system: return nil
+    case .light: return NSAppearance(named: .aqua)
+    case .dark: return NSAppearance(named: .darkAqua)
+    }
+  }
+
+  /// Set on the application, so it reaches what is already on screen and whatever is opened later.
+  /// What it reaches is whatever asked for a semantic colour, which is this window and the menus and
+  /// panels around it; the overlay, the key sheet and the toast name their colours outright and are
+  /// unmoved. That is the line rather than an oversight -- those three are drawn over another app's
+  /// window rather than beside it, and a mask that went light with the desktop would stop masking.
+  /// The sheet is the same picture from the menu bar as it is mid-session for the same reason.
+  func apply() {
+    NSApp.appearance = appearance
+  }
+}
+
 enum Settings {
   static var chord: Chord {
     let defaults = UserDefaults.standard
@@ -1947,6 +1999,13 @@ enum Settings {
   static var hintStyle: HintStyle {
     get { HintStyle(rawValue: UserDefaults.standard.string(forKey: "hintStyle") ?? "") ?? .grey }
     set { UserDefaults.standard.set(newValue.rawValue, forKey: "hintStyle") }
+  }
+
+  /// What the app's own windows look like. Stored by name for the same reason the hint style is,
+  /// and defaulting to following macOS.
+  static var theme: Theme {
+    get { Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .system }
+    set { UserDefaults.standard.set(newValue.rawValue, forKey: "theme") }
   }
 
   /// Forgets a chosen folder. Choosing one is otherwise a one-way door: the panel always writes a
@@ -2196,6 +2255,13 @@ final class PointerButton: NSButton {
   }
 }
 
+/// The same for a segmented control, which AppKit also leaves the arrow over.
+final class PointerSegmentedControl: NSSegmentedControl {
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .pointingHand)
+  }
+}
+
 final class SettingsWindow: NSWindowController {
   private var recorder: RecorderView!
   private let folder = NSTextField(labelWithString: "")
@@ -2214,7 +2280,7 @@ final class SettingsWindow: NSWindowController {
     // its content: a row added or removed here is a row's worth of height to adjust by hand, or the
     // window keeps a gap where the row was.
     let window = SettingsPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 500, height: 398),
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 438),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
     self.init(window: window)
@@ -2249,6 +2315,30 @@ final class SettingsWindow: NSWindowController {
     styleRow.spacing = 0
     styleRow.setCustomSpacing(12, after: styleCaption)
     styleCaption.widthAnchor.constraint(equalToConstant: 150).isActive = true
+
+    let themeCaption = NSTextField(labelWithString: "Theme")
+    themeCaption.font = .systemFont(ofSize: 13)
+    // Words, where the row above it is pictures. One of the three is not a look at all but a
+    // deferral to macOS, which has nothing to draw, and the other two are this whole window rather
+    // than something that fits beside its own name.
+    let themes = PointerSegmentedControl(
+      labels: Theme.allCases.map(\.title), trackingMode: .selectOne,
+      target: self, action: #selector(chooseTheme(_:)))
+    themes.selectedSegment = Theme.allCases.firstIndex(of: Settings.theme) ?? 0
+    // The caption beside it is a label in the window and not a label of the control, so without
+    // this the group is nameless in the tree -- the same gap the swatches spell out a title for,
+    // and a title rather than a label for the same reason: a script addresses `radio group "Theme"`
+    // by title, and a label alone leaves the name reading `missing value` there. The segments
+    // already name themselves, being real AppKit controls rather than bare views.
+    themes.setAccessibilityTitle("Theme")
+    let themeRow = NSStackView(views: [themeCaption, themes])
+    themeRow.orientation = .horizontal
+    themeRow.spacing = 12
+    NSLayoutConstraint.activate([
+      themeCaption.widthAnchor.constraint(equalToConstant: 150),
+      // The recorder's width, so the two controls that are neither a plate nor a path line up.
+      themes.widthAnchor.constraint(equalToConstant: 190),
+    ])
 
     folder.font = .systemFont(ofSize: 12)
     folder.textColor = .secondaryLabelColor
@@ -2310,7 +2400,7 @@ final class SettingsWindow: NSWindowController {
     relaunchRow.spacing = 12
 
     let stack = NSStackView(
-      views: [hotKeyRow, styleRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
+      views: [hotKeyRow, styleRow, themeRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -2443,6 +2533,15 @@ final class SettingsWindow: NSWindowController {
     for swatch in swatches { swatch.isSelected = swatch.style == style }
   }
 
+  /// Takes effect at once, on this window among others -- the setting is what the window it is set
+  /// in looks like, so applying it later would be asking someone to judge it from memory.
+  @objc private func chooseTheme(_ sender: NSSegmentedControl) {
+    guard Theme.allCases.indices.contains(sender.selectedSegment) else { return }
+    let theme = Theme.allCases[sender.selectedSegment]
+    Settings.theme = theme
+    theme.apply()
+  }
+
   @objc private func toggleLaunch(_ sender: NSButton) {
     do {
       if sender.state == .on { try SMAppService.mainApp.register() }
@@ -2547,6 +2646,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var busy = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // Before anything is built, so the first window drawn is already the right one rather than a
+    // window that changes colour once it is on screen.
+    Settings.theme.apply()
+
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Axshot")
 

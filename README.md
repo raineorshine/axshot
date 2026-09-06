@@ -88,6 +88,13 @@ pale content; yellow, the loudest of the warm ones; blue, which almost no page's
 for a screen busy enough that every other plate colour is already somewhere in it. They are picked
 by clicking the plate itself rather than a name for it, and apply from the next capture.
 
+Theme, in Settings too, is what the app's own windows look like — Settings, its menu bar, the menu
+bar item's menu, an alert. System, the default, follows macOS; Light and Dark are for a desktop
+left on one theme by someone who wants this window on the other. It is independent of Hint style:
+plates are chosen for the window underneath them, these windows for the desktop around them. What
+axshot draws over other apps — the overlay, the key sheet, the capture thumbnail — keeps its own
+colours either way.
+
 Resident, but only as a listener. An idle hotkey costs nothing and the tree is still walked on
 demand; nothing is cached between captures. See "Measured" for why.
 
