@@ -261,6 +261,10 @@ Each of these cost time in the session that built the tool.
   front. Front the target again before *each* run, not once per test: a run that ends gives the
   foreground back, and the next one then photographs a different app at the same coordinates and
   says nothing about it.
+- **The lock is in the main checkout, not the worktree.** `axshot-test-lock.sh` resolves it from the
+  first entry of `git worktree list`, so a `.claude/axshot-test.lock` *inside* a worktree is a
+  leftover from something else and its contents say nothing about the lock in force — a missing file
+  in it reads exactly like the script failing to write one. `status` is the readout.
 - **`security dump-keychain` does not list keys**, only passwords. There is no convenient shell
   route to a private key's label; the dialog that asks about it is the readout.
 - **A GUI dialog can block a build indefinitely.** `codesign` waiting on a keychain prompt looks

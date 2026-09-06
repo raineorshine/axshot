@@ -119,6 +119,13 @@ explained where it is implemented.
   title bar inactive, and the screenshot would show that.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
   system-wide and the only one needing no permission.
+- **A test lock that cannot move gives up rather than being made unstuckable.** Every way the queue
+  can stall ends in a bound or a recovery instead of a mechanism that prevents it: a wait gives up on
+  its own deadline and reports what it was waiting on, `dequeue` clears a queue whose head nobody can
+  move, `break` recovers an abandoned lock. Handing the lock straight to the next ticket, so that it
+  is never unheld, was weighed and turned down — it means rewriting ownership onto a process that has
+  not woken yet, tracking that process's liveness, and refreshing the snapshot wherever the live app
+  no longer matches it, to close a window that a refusal already covers.
 
 ## Changing the region filter
 

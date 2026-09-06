@@ -79,8 +79,14 @@ background task leaves the queue.
 
 ### 3. Build and install
 
+Rebase first if the branch is behind. A worktree here can be many commits behind `origin/main` while
+carrying nothing of its own — several land during a single test — and `build.sh` compiles what the
+worktree has, so installing without rebasing puts superseded `axshot.swift` in the live slot and
+everything after this step measures code that main replaced. Commit first if the tree is dirty: a
+rebase refuses one, and the stash is shared with every other worktree.
+
 ```bash
-./build.sh
+git fetch origin && git rebase origin/main && ./build.sh
 ```
 
 The signing line must read `signed by Axshot Local Signing`. If it says `signed by -`, the build fell
