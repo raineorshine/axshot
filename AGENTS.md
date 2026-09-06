@@ -34,7 +34,7 @@ user was typing into.
 | `axshot.swift` | everything: walk, filter, overlay, hotkeys, settings, CLI |
 | `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot`, installs it; `--no-install` stops before the install |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
-| `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
+| `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard, and the queue for it |
 
 The same binary is the app when launched with no arguments and a CLI when given any. Build output
 (`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
@@ -43,7 +43,9 @@ There is one installed app, `/Applications/Axshot.app`, and the permission grant
 signature rather than its path — so any build signed with the same certificate satisfies them
 wherever it sits. What is genuinely single is the running instance, which owns the global hotkeys,
 and the login item, which names one bundle path. `build.sh` compiles inside the checkout and installs
-from there through the lock, which refuses while another session is driving the app.
+from there through the lock, which refuses while another session is driving the app. A session that
+wants a held lock does not ask again later: `wait` queues it and blocks until the release hands it
+over, so parallel worktrees test in the order they arrived.
 
 ## Session titles
 
@@ -59,7 +61,7 @@ nothing left to do keeps the one for the last stage it reached.
 | | |
 |---|---|
 | `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
-| `🔓 ` | about to take the lock, or just released it |
+| `🔓 ` | about to take the lock — including queued and blocked on it — or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
 | `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
