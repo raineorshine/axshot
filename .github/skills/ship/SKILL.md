@@ -1,6 +1,6 @@
 ---
 name: ship
-description: "Finish a change in the axshot repo: release the test lock, build signed, commit, rebase on origin/main, squash, push to origin/main, and fast-forward the local main. Use only when the user explicitly asks for the change to be shipped, landed, or pushed to main — never because a change looks finished."
+description: "Finish a change in the axshot repo: release the test lock, build signed, commit, rebase on origin/main, squash, push to origin/main, fast-forward the local main, and extract the session's learnings. Use only when the user explicitly asks for the change to be shipped, landed, or pushed to main — never because a change looks finished."
 ---
 
 # Ship (finish change → merge to main)
@@ -149,6 +149,18 @@ now (`📦 ` for a tested branch, none otherwise). Do not report this step.
 
   Only when the user confirms the worktree is no longer needed.
 
-### 9. Print the completion message
+### 9. Extract the learnings
 
-Print `🚀 Shipped` as the last line of the response.
+Invoke the `learn` skill. A shipped change is the moment its lessons are worth writing down: the
+branch is landed, nothing is pending, and whatever the session learned about the app, the tree or
+the workflow is still in context — an hour later it is in nobody's. This is not optional and the
+user does not have to ask for it; it is the last stage of shipping.
+
+`learn` puts `📚 ` on the title, replacing the `🚀 `. Put `🚀 ` back when it finishes: the session
+shipped, and that is the stage it rests at.
+
+If `learn` finds nothing worth recording, that is a normal outcome — say so in one line and move on.
+
+### 10. Print the completion message
+
+Print `🚀 Shipped` as the last line of the response, after the learn report.
