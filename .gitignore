@@ -2,3 +2,4 @@ bin/
 Axshot.app/
 .claude/
 .DS_Store
+.env

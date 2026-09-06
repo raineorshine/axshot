@@ -184,9 +184,10 @@ reports for a window that is there, so it is a pass only on a machine that is aw
 
 ## Seeing the overlay
 
-Axshot orders its overlay out before capturing, so its own screenshots never contain it. To look at
-the overlay itself, trigger it and capture the screen from a *different* process — a shell with its
-own Screen Recording grant — then send Escape:
+Axshot keeps its own marks out of its own screenshots — the shutter orders the overlay out, and the
+transcription key leaves it up and draws it bare — so no capture it takes ever contains them. To look
+at the overlay itself, trigger it and capture the screen from a *different* process — a shell with
+its own Screen Recording grant — then send Escape:
 
     osascript -e 'tell application "System Events" to key code 21 using {option down, command down}'
     sleep 3
@@ -213,6 +214,24 @@ be photographed at three moments — up, mid-animation, gone — and appending t
 (`magick a.png b.png c.png +append`) is what makes the sequence one thing to look at rather than
 three.
 
+A still cannot show a transition, and a transition is what most overlay complaints are about — a
+flash, a gap, a thing that redraws twice. When the user sends a screen recording, read it frame by
+frame rather than scrubbing it: extract every frame and tile them into one contact sheet, and the
+frame where the mask is missing is visible at a glance where playback is too fast to catch it.
+
+    ffmpeg -v error -i rec.mov -vf "scale=760:-1" frames/f%03d.png
+    ffmpeg -v error -i frames/f%03d.png -vf "tile=6x4,scale=1400:-1" grid.png
+
+Such a clip is often under a second, so ask for every frame and not a sampled `fps=`. And the file
+name will not be the one you were given: macOS writes a narrow no-break space (U+202F) before AM/PM
+in screenshot and recording names, so a path that `ls` prints and the user pastes still fails `stat`
+and `ffmpeg` with "No such file or directory". Match it with a glob rather than retyping it.
+
+The shell running the tests generally has no Screen Recording grant of its own — `screencapture`
+fails with "could not create image from rect" — so a probe image for anything that reads pixels has
+to be rendered rather than photographed. `qlmanage -t -s 900 -o . file.txt` turns a text file into a
+PNG of that text, which is enough to prove a reader reads.
+
 ## Asking what the tree actually says
 
 `--dump` prints one label per element, already collapsed to a line, so it answers which regions
@@ -229,11 +248,19 @@ Each of these cost time in the session that built the tool.
 
 - **A black screenshot means the display is asleep**, not that the window is missing. Anything
   visual is unverifiable until someone wakes it.
-- **Window queries go quiet while the session is locked.** System Events reporting zero windows for
-  a running app is not evidence the app failed to open one; ask the app instead, or check again
-  when the screen is awake.
-- **Capturing a window's rect captures whatever is on top of it.** Front the window first, or the
-  screenshot is of the app that happens to overlap it.
+- **Window queries go quiet while the session is locked.** `--dump` reporting `windows=0` for every
+  app on the machine — not one app, all of them — is the signature, and it reads exactly like a
+  tree that is never exposed. Nothing visual can be driven or captured until someone unlocks it, so
+  check before concluding anything about the walk:
+
+      ioreg -n Root -d1 -r | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'
+
+  An absent key is an unlocked session; `=Yes` means stop and hand the build over.
+- **Capturing a window's rect captures whatever is on top of it.** `--bundle` aims the walk and not
+  the camera, so the outcome line names the region it meant while the pixels are of whatever was in
+  front. Front the target again before *each* run, not once per test: a run that ends gives the
+  foreground back, and the next one then photographs a different app at the same coordinates and
+  says nothing about it.
 - **`security dump-keychain` does not list keys**, only passwords. There is no convenient shell
   route to a private key's label; the dialog that asks about it is the readout.
 - **A GUI dialog can block a build indefinitely.** `codesign` waiting on a keychain prompt looks

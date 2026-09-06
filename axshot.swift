@@ -83,6 +83,32 @@
 // HJKL is a hand shape that has to stay where the hand is, and J for join is a word that has to
 // stay where the word is.
 //
+// Shift-T reads the words the tree does not have. A canvas, a PDF, a terminal, a screenshot of a
+// table: the box is there and the text inside it is not, and Shift-J beeps at exactly the regions
+// worth asking about. So T photographs the held region and sends the picture to the Claude API to
+// be transcribed, and draws the answer in the box Shift-J draws in -- the same question, answered
+// off the pixels instead of out of the tree, and copied by the same two chords. The mask stays up
+// across that photograph -- it is drawn even-odd and never covered the region -- and what comes off
+// is the corner brackets and the text box, which sit inside the region and would otherwise come back
+// transcribed as though the app had written them there. Ordering the whole overlay out takes the
+// same picture, and unmasks and re-masks around the shutter, which is a flash the join key does not
+// have. It is a toggle like J, and toggling it costs nothing: the
+// answer is kept for as long as the region is held, so it can go off and back on without the picture
+// being sent anywhere a second time. What it does not survive is an arrow step -- the transcription
+// was of that region's picture, and re-reading for the next region is a second call and a second
+// charge no keystroke asked for.
+//
+// While the request is out the overlay says "Transcribing...", the hold deadline is pushed out to 90
+// seconds so a slow call cannot be cut off mid-sentence, and Escape still cancels -- the tap is up
+// the whole time, so the keyboard is swallowed for as long as the call takes. What comes back is
+// drawn in a separate field from the joined text, so that the copy chords hand over what the region
+// said and never what axshot said about it.
+//
+// The key comes from CLAUDE_API_KEY: the environment first, so a command line run can be given one
+// for a single invocation, then ~/.config/axshot/.env, then a .env in the working directory. The
+// fixed absolute path is the one the app can use -- launched from /Applications at login it has no
+// environment and no useful working directory, and would never find a .env in a checkout.
+//
 // The arrows adjust the held region without going back to the hints, for when the one that was
 // lettered is nearly right: Left and Right step across the tree in document order -- to the next
 // sibling, cousin, uncle or nephew, skipping the held region's own ancestors and descendants, which
@@ -154,6 +180,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import QuartzCore
 import Foundation
 import ScreenCaptureKit
 import ServiceManagement
@@ -554,6 +581,16 @@ final class HintView: NSView {
   /// elements comes back as a dozen lines -- so the joined form is put on screen before it is
   /// copied, in the one place the original is still next to it.
   var joined: String?
+  /// A word from the app rather than from the region -- "Transcribing..." while the request is out,
+  /// or why it failed. Drawn in the same box as the joined text, and deliberately not the same
+  /// field: the copy key hands over what the region said, and never what axshot said about it.
+  var notice: String?
+  /// Set across the shutter that Shift-T fires. The mask stays exactly where it is -- it is drawn
+  /// even-odd and never covers the region -- while the two things that *are* drawn inside the region
+  /// come off: the corner brackets, and the text box if one is up. Ordering the whole overlay out
+  /// instead would photograph the same pixels, but the region would visibly unmask and re-mask
+  /// around the shutter, which is a flash the join key never has.
+  var bare = false
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -568,6 +605,10 @@ final class HintView: NSView {
       mask.windingRule = .evenOdd
       NSColor(calibratedWhite: 0, alpha: 0.55).setFill()
       mask.fill()
+
+      // Nothing below this line is drawn for the shutter: it all sits inside the region, which is
+      // the one part of the screen the photograph is of.
+      if bare { return }
 
       // Corner brackets, drawn inside the region so they mark it without covering its edge pixels.
       let arm = min(24, selection.width / 3, selection.height / 3)
@@ -585,7 +626,7 @@ final class HintView: NSView {
       corners.lineWidth = thickness
       corners.stroke()
 
-      if let joined {
+      if let joined = notice ?? joined {
         // Over the region rather than beside it: the joined text is what the region says, and the
         // region is the only box on screen guaranteed to be where the eye already is. Opaque,
         // because text drawn over text is neither of them.
@@ -705,6 +746,22 @@ final class Session {
   var joined: String?
   /// How long the text walk may take, which is the same budget the region walk was given.
   var budgetMs = 2000
+  /// What the last Shift-T read off the held region, kept while that region stays held so the key
+  /// can be toggled without paying for the answer again. Dropped by a step, which changes the
+  /// picture the answer was about.
+  var transcription: String?
+  /// Whether that answer is the thing currently on screen, as opposed to merely remembered. It is
+  /// what Command-C reads to decide that a picture cannot be what the press meant.
+  var transcribed = false
+  /// The transcription request in flight, kept so the session can cancel it on the way out. The
+  /// overlay's deadline is not the request's, and an answer that arrives after the overlay is down
+  /// has nothing to draw itself on.
+  var request: URLSessionTask?
+  /// How long the overlay waits after hiding itself before photographing the region, so the window
+  /// server has composited the mask away. The same beat the shutter takes.
+  var delayMs = 60
+  /// Set across the photograph, so a key arriving in that beat cannot start a second one.
+  var photographing = false
   var cancelled = false
   /// The chord that opened this session. The tap is inserted ahead of the hotkey manager, so it
   /// sees that chord before Carbon does and a second press can close what the first opened.
@@ -742,9 +799,11 @@ final class Session {
       }
       guard let region = held, keyCode == 8 else { return }  // c
       // Both ends go to the clipboard, which is why they are the same letter; Shift asks for the
-      // words rather than a picture of them. With a join on screen the bare chord asks for them
-      // too: the words are what is being looked at, and a picture would carry the region the join
-      // is drawn over rather than the run that was asked for.
+      // words rather than a picture of them. With either text box on screen the bare chord asks for
+      // them too: the words are what is being looked at, the box is opaque and the region is not
+      // visible behind it, and a picture would carry what the box is drawn over rather than what was
+      // asked for. One condition covers both, since a transcription is held in the same field a join
+      // is.
       if event.flags.contains(.maskShift) || joined != nil { copying = true } else { toClipboard = true }
       chosen = region
       CFRunLoopStop(CFRunLoopGetCurrent())
@@ -760,6 +819,9 @@ final class Session {
       // layout types rather than as the key at J's position, unlike the HJKL beneath it: those are
       // a hand shape, and this is a word.
       if event.flags.contains(.maskShift), typedLetter(event) == "j" { join(); return }
+      // Shift-T beside it, and read as a letter for the same reason: J joins the words the tree
+      // already has, T reads the ones only the pixels have.
+      if event.flags.contains(.maskShift), typedLetter(event) == "t" { transcribe(); return }
       if keyCode == 51 { release() }  // delete, back to the hints
       if let index = heldIndex {
         switch keyCode {
@@ -804,7 +866,14 @@ final class Session {
     held = candidates[index]
     heldIndex = index
     view.selection = view.boxes[index].rect
-    if joined != nil { joined = regionText(candidates[index], budgetMs: budgetMs, separator: " ") }
+    view.notice = nil
+    if transcribed || transcription != nil {
+      transcribed = false
+      transcription = nil
+      joined = nil
+    } else if joined != nil {
+      joined = regionText(candidates[index], budgetMs: budgetMs, separator: " ")
+    }
     deadline = Date().addingTimeInterval(30)
     refresh()
   }
@@ -823,6 +892,90 @@ final class Session {
     }
     deadline = Date().addingTimeInterval(30)
     refresh()
+  }
+
+  /// Read the held region's words off its pixels, for the regions the tree has none for -- a canvas,
+  /// a PDF, a terminal, a screenshot of a table. The answer lands in the same box Shift-J draws in,
+  /// because it answers the same question; a second press takes it back down, as with Shift-J.
+  ///
+  /// The overlay stays on screen for the photograph and is drawn bare instead. The mask never
+  /// covered the region, but the corner brackets are drawn inside it and the text box over it, and
+  /// either would be transcribed as though the app had written them there.
+  func transcribe() {
+    guard let region = held, let index = heldIndex else { return }
+    // Off, back on, off again, all without asking twice. The answer is kept for as long as the
+    // region is held, so the toggle costs nothing after the first press; only a region that has
+    // never been read sends a picture anywhere.
+    if transcribed || view.notice != nil {
+      transcribed = false
+      joined = nil
+      view.notice = nil
+      request?.cancel()
+      request = nil
+      deadline = Date().addingTimeInterval(30)
+      refresh()
+      return
+    }
+    if let transcription {
+      joined = transcription
+      transcribed = true
+      deadline = Date().addingTimeInterval(30)
+      refresh()
+      return
+    }
+    guard request == nil, !photographing else { return }
+
+    // Drawn bare rather than ordered out, so the mask never leaves the screen: the region goes
+    // straight from selected to transcribed, the way Shift-J does, instead of unmasking for the
+    // length of a screencapture and coming back.
+    //
+    // Slept rather than run: this is inside the tap callback, and re-entering the run loop here
+    // would deliver the next key event on top of a half-finished one -- a second Shift-T inside the
+    // beat the compositor is being given would photograph a region with the brackets half off. The
+    // window server does the compositing on its own thread, so it does not need ours turning.
+    photographing = true
+    defer { photographing = false }
+    view.bare = true
+    view.display()
+    CATransaction.flush()
+    Thread.sleep(forTimeInterval: Double(delayMs) / 1000)
+    let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("axshot-transcribe.png")
+    let captured = capture(region.rect, to: path)
+    view.bare = false
+    let png = captured ? FileManager.default.contents(atPath: path) : nil
+    try? FileManager.default.removeItem(atPath: path)
+    guard let png else {
+      view.notice = CGPreflightScreenCaptureAccess() ? "Could not photograph the region" : "Screen Recording is not granted"
+      NSSound.beep()
+      deadline = Date().addingTimeInterval(30)
+      refresh()
+      return
+    }
+
+    view.notice = "Transcribing..."
+    // Generous, and restarted again when the answer lands: the request has its own timeout, and a
+    // hold that expired underneath a call in flight would take the overlay down mid-sentence.
+    deadline = Date().addingTimeInterval(90)
+    refresh()
+    request = transcribeImage(png) { [weak self] text, failure in
+      DispatchQueue.main.async {
+        // The held region can have moved on under an arrow while the call was out; the answer is
+        // about the picture that was taken, so it is dropped rather than drawn over a different box.
+        guard let self, !self.cancelled, self.chosen == nil, self.heldIndex == index else { return }
+        self.request = nil
+        self.view.notice = nil
+        if let text {
+          self.transcription = text
+          self.joined = text
+          self.transcribed = true
+        } else {
+          self.view.notice = "Transcription failed (\(failure ?? "unknown"))"
+          NSSound.beep()
+        }
+        self.deadline = Date().addingTimeInterval(30)
+        self.refresh()
+      }
+    }
   }
 
   /// The next region off the held one's direct line: its siblings, cousins, uncles and nephews, in
@@ -883,7 +1036,10 @@ final class Session {
     descent = []
     typed = ""
     joined = nil
+    transcribed = false
+    transcription = nil
     view.selection = nil
+    view.notice = nil
     refresh()
   }
 
@@ -957,6 +1113,113 @@ func capture(_ rect: CGRect, to path: String?) -> Bool {
   process.waitUntilExit()
   guard process.terminationStatus == 0 else { return false }
   return path.map { FileManager.default.fileExists(atPath: $0) } ?? true
+}
+
+// MARK: - Transcription
+
+/// The model that reads a region's pixels. Opus rather than something cheaper because this key is
+/// only ever reached for the regions the tree had no words for -- a canvas, a PDF, a terminal, an
+/// image of a table -- which are exactly the ones a weaker reader gets wrong.
+let claudeModel = "claude-opus-5"
+
+/// Where the key is looked for, in order. The environment first, so a command line run can be given
+/// one for a single invocation; then a fixed absolute path, because the app is launched from
+/// /Applications at login with no environment and no useful working directory and would never find
+/// a .env in a checkout; then the working directory, for a CLI run from the checkout itself.
+func claudeAPIKey() -> String? {
+  if let key = ProcessInfo.processInfo.environment["CLAUDE_API_KEY"], !key.isEmpty { return key }
+  let files = [
+    (NSHomeDirectory() as NSString).appendingPathComponent(".config/axshot/.env"),
+    (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent(".env"),
+  ]
+  for path in files {
+    guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+    for line in contents.split(separator: "\n", omittingEmptySubsequences: true) {
+      var entry = line.trimmingCharacters(in: .whitespaces)
+      if entry.hasPrefix("export ") { entry = String(entry.dropFirst(7)) }
+      guard let split = entry.firstIndex(of: "="),
+            entry[entry.startIndex..<split].trimmingCharacters(in: .whitespaces) == "CLAUDE_API_KEY"
+      else { continue }
+      let value = entry[entry.index(after: split)...]
+        .trimmingCharacters(in: .whitespaces)
+        .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+      if !value.isEmpty { return value }
+    }
+  }
+  return nil
+}
+
+/// Read the words off a picture of a region. Returns the task so the session can cancel it: the
+/// overlay's deadline is not the request's, and a session that ended has nothing to draw the answer
+/// on.
+///
+/// Raw URLSession rather than an SDK because there is no official Anthropic SDK for Swift, and this
+/// file has no dependencies by design. Effort is low and thinking is left alone: transcription is
+/// not a reasoning task, and the overlay is frozen with the keyboard swallowed for as long as the
+/// call takes, so latency is the thing being bought. The refusal fallback is on -- a screenshot of
+/// somebody's window is not a request anyone chose the contents of, and a refused one should come
+/// back as words rather than as an error the user cannot act on.
+@discardableResult
+func transcribeImage(_ png: Data, completion: @escaping (String?, String?) -> Void) -> URLSessionTask? {
+  guard let key = claudeAPIKey() else { completion(nil, "no_api_key"); return nil }
+  let instruction = """
+    Transcribe every word visible in this image, in reading order. Reproduce the text exactly, \
+    including its punctuation and capitalisation. Do not describe the image, do not explain what \
+    you see, and do not wrap the transcription in code fences or quotation marks. If the image \
+    contains no text at all, reply with nothing.
+    """
+  let body: [String: Any] = [
+    "model": claudeModel,
+    "max_tokens": 16000,
+    "output_config": ["effort": "low"],
+    "fallbacks": "default",
+    "messages": [[
+      "role": "user",
+      "content": [
+        ["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": png.base64EncodedString()]],
+        ["type": "text", "text": instruction],
+      ],
+    ]],
+  ]
+  guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
+    completion(nil, "encode_failed")
+    return nil
+  }
+
+  var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+  request.httpMethod = "POST"
+  request.timeoutInterval = 60
+  request.setValue("application/json", forHTTPHeaderField: "content-type")
+  request.setValue(key, forHTTPHeaderField: "x-api-key")
+  request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+  request.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
+  request.httpBody = payload
+
+  let task = URLSession.shared.dataTask(with: request) { data, response, error in
+    if let error = error as NSError?, error.code == NSURLErrorCancelled { return }
+    if error != nil { completion(nil, "unreachable"); return }
+    guard let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      completion(nil, "unreadable")
+      return
+    }
+    // The API says what went wrong in the body, and the status alone does not: a 400 for an image
+    // over the size limit and a 401 for a stale key are the same number to a caller that only reads
+    // the code, and both are things the person at the keyboard can fix.
+    if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
+      let detail = (json["error"] as? [String: Any])?["type"] as? String
+      completion(nil, detail ?? "http_\(status)")
+      return
+    }
+    if json["stop_reason"] as? String == "refusal" { completion(nil, "refused"); return }
+    let text = (json["content"] as? [[String: Any]] ?? [])
+      .filter { $0["type"] as? String == "text" }
+      .compactMap { $0["text"] as? String }
+      .joined()
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    completion(text.isEmpty ? nil : text, text.isEmpty ? "no_text" : nil)
+  }
+  task.resume()
+  return task
 }
 
 // MARK: - Toast
@@ -1210,6 +1473,7 @@ func runSession(_ options: Options) -> Outcome {
   session.candidates = candidates
   session.view = view
   session.budgetMs = options.budgetMs
+  session.delayMs = options.delayMs
   session.cancelChord = options.cancelChord
   Session.shared = session
 
@@ -1236,6 +1500,7 @@ func runSession(_ options: Options) -> Outcome {
     if let extended = session.deadline { sessionDeadline = extended; session.deadline = nil }
   }
 
+  session.request?.cancel()
   CGEvent.tapEnable(tap: tap, enable: false)
   CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
   CFMachPortInvalidate(tap)
@@ -1243,8 +1508,8 @@ func runSession(_ options: Options) -> Outcome {
 
   // The copy key takes no picture, so there is nothing to wait for the compositor over.
   if session.copying, let chosen = session.chosen {
-    // Whatever is on screen is what is copied: the joined run if Shift-J put it there, and
-    // otherwise the text laid out the way the region laid it out.
+    // Whatever is on screen is what is copied: the transcription if Shift-T put it there, the joined
+    // run if Shift-J did, and otherwise the text laid out the way the region laid it out.
     let text = session.joined ?? regionText(chosen, budgetMs: options.budgetMs)
     let box = chosen.rect
     guard !text.isEmpty else {
@@ -1252,7 +1517,7 @@ func runSession(_ options: Options) -> Outcome {
     }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   // Give the window server a beat to composite the overlay away before the shutter.

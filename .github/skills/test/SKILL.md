@@ -147,8 +147,12 @@ Release first, then follow the `ship` skill.
 - **The clipboard is the user's too.** Anything that drives a clipboard path overwrites whatever
   they were carrying, and it is not restored by releasing the lock. Save it with `pbpaste` before
   the first run and put it back after the last one.
-- **A capture takes whatever is frontmost.** Activate the app you mean, or you will measure the
-  wrong window and conclude the filter is broken.
+- **A capture takes whatever is frontmost.** Activate the app you mean — before every run, not once
+  per test — or you will measure the wrong window and conclude the filter is broken.
+- **Some paths spend the user's money.** The transcription key sends a picture to the Claude API on
+  every press that is not served from the held region's cached answer, and each one is billed to the
+  key in `~/.config/axshot/.env`. Drive it deliberately, on a small region, and reuse one session's
+  answer rather than re-running the whole path to check a later step.
 - **Never change the bundle identifier or the signing certificate to make a test pass.** Either
   costs a full re-grant of both permissions, which needs the user.
 - **`build.sh` installs unless told `--no-install`.** It is not a compile step you can take before

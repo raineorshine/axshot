@@ -18,7 +18,7 @@ hotkey — cancels. `⌘,` cancels and opens settings, held region or not — th
 bar it would otherwise take to get there.
 
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
-back at the hotkey:
+back at the hotkey, and two keys that put the region's words on screen first:
 
 | | |
 |---|---|
@@ -26,6 +26,7 @@ back at the hotkey:
 | `⌘C` | put that same picture on the clipboard |
 | `⌘⇧C` | put the region's **text** on the clipboard, and take no picture |
 | `⇧J` | show that text joined into one run of prose, which either copy chord then copies |
+| `⇧T` | transcribe the region's *picture* instead, for when the tree has no text |
 
 `⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into one run of prose — the line breaks the layout put in taken back
 out — and draws it over the region, where the original is still there to check it against. `⌘⇧C`
@@ -38,6 +39,28 @@ order, clipped to the region the way the shot would be — so it is the region's
 anything read back off the pixels. Only what was on screen: the tree also holds the names screen
 readers read for icons, and a name is kept only where it would have fitted inside its own control,
 so the trash can beside a row does not paste the word "Trash".
+
+`⇧T` is for the regions where that tree has nothing — a canvas, a PDF, a terminal, a screenshot of a
+table, anywhere `⇧J` just beeps. It photographs the held region, sends the picture to the Claude API
+to be transcribed, and draws the answer in the same box `⇧J` draws in, for the same two chords to
+copy. The mask stays up across that photograph — it never covered the region — and only the corner
+brackets come off, which would otherwise be transcribed along with it; ordering the whole overlay out
+would take the same picture but unmask and re-mask around the shutter. It is a toggle like `⇧J`, and
+toggling it is free — the answer
+is kept while the region stays held, so it goes off and back on without asking again. What it does
+not do is follow the arrows: the transcription was of that region's picture, and re-reading the next
+one is another call nobody asked for.
+
+While the request is out the overlay says `Transcribing…` and the keyboard stays swallowed; `Escape`
+cancels. A region costs roughly half a cent on `claude-opus-5` — about 1200 input tokens for a
+typical box.
+
+The key is read from `CLAUDE_API_KEY`: the environment first, then `~/.config/axshot/.env`, then a
+`.env` in the working directory. Only the first two reach the menu bar app — launched from
+`/Applications` at login it has no environment and no useful working directory, so a `.env` in a
+checkout is found by `bin/axshot` and not by the app:
+
+    mkdir -p ~/.config/axshot && echo 'CLAUDE_API_KEY=sk-ant-...' > ~/.config/axshot/.env
 
     ./build.sh
 
