@@ -60,9 +60,26 @@
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
 // same picture on the clipboard, and Command-Shift-C puts the region's *text* there instead and
 // takes no picture at all -- the tree that gave the box has the words in it too, and a screenshot
-// of a paragraph is a poor way to carry the paragraph. The two clipboard exits share a letter
+// of a paragraph is a poor way to carry the paragraph. Only the words that were on screen: the
+// tree also names things for screen readers -- "gearshape" on a symbol, "More options" on a plus
+// sign -- and since nothing marks those as standing in for an icon, a name is taken only where it
+// would have fitted inside its own control at the system's font size, and an image's alt text is
+// never taken at all. It is a measurement rather than a rule the tree offers, so a short name on a
+// wide enough control still comes through. The two clipboard exits share a letter
 // because they share a destination; Shift is what asks for the words. Each hold restarts the
 // session deadline, which is a decision the run loop could not have known to wait for.
+//
+// Shift-J joins those words: the region's text with its line breaks taken out, drawn over the
+// region itself rather than beside it, and it is then what Command-Shift-C copies. A paragraph the
+// layout broke across a dozen elements comes back out of the tree as a dozen lines, and pasting
+// that into prose is a re-flow by hand -- so the join happens where the original is still on screen
+// to check it against. It is a toggle, since what it draws covers the region it describes, and it
+// survives an arrow step, recomputing for whatever is held next: the question it asked was about
+// the text, not about that one region. A bare J is still Down; the region is held, so Shift is
+// free to mean something else. It is the letter J as the layout types it, not the key at J's
+// position -- the opposite of the HJKL sharing that key, and for the reason those are physical:
+// HJKL is a hand shape that has to stay where the hand is, and J for join is a word that has to
+// stay where the word is.
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
 // lettered is nearly right: Left and Right step across the tree in document order -- to the next
@@ -376,6 +393,19 @@ final class Walk {
 /// contributes its parts once rather than once per wrapper. Clipped the way the regions are: a
 /// subtree whose box falls entirely outside what is held is not in the shot the same keystroke
 /// would have taken, so it is not in the copy either.
+let textRoles: Set<String> = ["AXStaticText", "AXTextField", "AXTextArea"]
+
+/// Whether a label could have been rendered inside this box, measured at the size the system draws
+/// labels at. Controls do not wrap their labels, so one line that runs past the control's own edge
+/// was never drawn there. This is what separates the two, since nothing in the tree marks a name as
+/// standing in for an icon: "Edit" beside a rule is a button 64 points wide and is on screen,
+/// "Trash" is the same word on the 26-point can next to it and is not.
+func fits(_ text: String, in frame: CGRect) -> Bool {
+  let width = (text as NSString)
+    .size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
+  return width <= frame.width + 2
+}
+
 func regionLines(_ element: AXUIElement, clip: CGRect, deadline: Date, path: inout Set<ElementKey>) -> [String] {
   if Date() > deadline { return [] }
   let key = ElementKey(element: element)
@@ -387,22 +417,38 @@ func regionLines(_ element: AXUIElement, clip: CGRect, deadline: Date, path: ino
 
   // Read raw rather than reusing the probe's label, which has had its newlines flattened out for
   // the one line the dump prints.
-  let own = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute]
+  var own = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute]
     .lazy.compactMap { string(element, $0) }.first { !$0.isEmpty }
 
-  let speaksForItself = ["AXStaticText", "AXTextField", "AXTextArea"].contains(info.role)
+  // An image's text is its alt text, which is a stand-in for the picture and was never on screen.
+  if info.role == "AXImage" { own = nil }
+
+  // A control's name is only its visible label where the label could have been drawn in the
+  // control's own box. An icon button carries a name for screen readers -- "More options" on a
+  // plus sign 24 points wide, "gearshape" on the symbol beside a row -- and copying the region
+  // would otherwise hand back words nobody can see in it. Text elements are exempt: they wrap and
+  // scroll and are the visible text by definition.
+  if let name = own, !textRoles.contains(info.role), let frame = info.frame, !fits(name, in: frame) {
+    own = nil
+  }
+
+  let speaksForItself = textRoles.contains(info.role)
   if info.children.isEmpty || (speaksForItself && own != nil) {
     return own.map { [$0] } ?? []
   }
 
   var lines: [String] = []
   for child in info.children { lines += regionLines(child, clip: clip, deadline: deadline, path: &path) }
-  // A container whose children said nothing still has its own name to give.
+  // A container whose children said nothing still has its own name to give -- where that name was
+  // itself on screen, by the same measure.
   if lines.isEmpty, let own { lines = [own] }
   return lines
 }
 
-func regionText(_ candidate: Candidate, budgetMs: Int) -> String {
+/// The region's text, one line per text-bearing element. `separator` is what those lines are put
+/// back together with: a newline keeps the layout the region had, and a space joins them into the
+/// running prose the layout had broken up, which is what Shift-J asks for.
+func regionText(_ candidate: Candidate, budgetMs: Int, separator: String = "\n") -> String {
   var path = Set<ElementKey>()
   let lines = regionLines(
     candidate.element, clip: candidate.rect,
@@ -415,7 +461,7 @@ func regionText(_ candidate: Candidate, budgetMs: Int) -> String {
     if trimmed.isEmpty || trimmed == kept.last { continue }
     kept.append(trimmed)
   }
-  return kept.joined(separator: "\n")
+  return kept.joined(separator: separator)
 }
 
 /// Snap to a 2pt grid so boxes that differ by a rounding error collapse into one key.
@@ -501,6 +547,11 @@ final class HintView: NSView {
   /// shutter waits for Return. Preview's crop, without the grid -- the point is to see what the
   /// shot will contain while the target is still on screen to compare it against.
   var selection: CGRect?
+  /// The held region's text with its line breaks taken out, drawn over the region itself. What the
+  /// tree hands over is not always what the layout showed -- a paragraph split across a dozen
+  /// elements comes back as a dozen lines -- so the joined form is put on screen before it is
+  /// copied, in the one place the original is still next to it.
+  var joined: String?
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -531,6 +582,61 @@ final class HintView: NSView {
       NSColor.white.setStroke()
       corners.lineWidth = thickness
       corners.stroke()
+
+      if let joined {
+        // Over the region rather than beside it: the joined text is what the region says, and the
+        // region is the only box on screen guaranteed to be where the eye already is. Opaque,
+        // because text drawn over text is neither of them.
+        // Padding scaled to the region rather than a fixed 8: a link or a table row is one line
+        // tall, which is where a joined run is likeliest to be asked for and where a fixed margin
+        // leaves no room to draw it in.
+        let padding = min(8, max(2, min(selection.width, selection.height) / 8))
+        let inset = selection.insetBy(dx: padding, dy: padding)
+        if inset.width > 16 && inset.height > 8 {
+          NSColor(calibratedWhite: 0.08, alpha: 0.94).setFill()
+          NSBezierPath(roundedRect: selection.insetBy(dx: padding / 2, dy: padding / 2), xRadius: 4, yRadius: 4).fill()
+          // Four fifths of the system's own body size, and 1.25 line spacing: this is a region's
+          // text laid over the region, so it has to hold more words in the same box than the layout
+          // it replaced -- a notch smaller than what the machine reads at, with the lines given
+          // room, since a run with its breaks taken out is a wall otherwise.
+          let style = NSMutableParagraphStyle()
+          style.lineBreakMode = .byWordWrapping
+          style.lineHeightMultiple = 1.25
+          func attributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
+            [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.white, .paragraphStyle: style]
+          }
+          // Laid out to be measured, rather than asking boundingRect: it does not count the leading
+          // that lineHeightMultiple adds, so it reports a wall of text a fifth shorter than it
+          // draws, and the box built from that figure cuts the last lines off.
+          let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+          func height(_ text: NSAttributedString) -> CGFloat {
+            let storage = NSTextStorage(attributedString: text)
+            let container = NSTextContainer(size: CGSize(width: inset.width, height: .greatestFiniteMagnitude))
+            container.lineFragmentPadding = 0
+            let layout = NSLayoutManager()
+            layout.addTextContainer(container)
+            storage.addLayoutManager(layout)
+            layout.ensureLayout(for: container)
+            return ceil(layout.usedRect(for: container).height) + 2
+          }
+          // Shrink below the system size only where the region holds more words than it has room
+          // for, down to a floor: the alternative is text cut off mid-sentence with nothing saying so.
+          var size = NSFont.systemFontSize * 0.8
+          var text = NSAttributedString(string: joined, attributes: attributes(size: size))
+          while height(text) > inset.height, size > 8 {
+            size -= 1
+            text = NSAttributedString(string: joined, attributes: attributes(size: size))
+          }
+          // Centred vertically in what is left over, which only shows on the short regions -- a row
+          // whose one line sat hard against the top read as clipped rather than as centred. The box
+          // gives up its top half of the slack and keeps the bottom: text is laid out downwards from
+          // the top, so a rect trimmed at the bottom as well would clip anything the measurement
+          // undercounted, and the centring is not worth paying for in lost lines.
+          let slack = max(0, inset.height - height(text))
+          text.draw(with: CGRect(x: inset.minX, y: inset.minY,
+                                 width: inset.width, height: inset.height - slack / 2), options: options)
+        }
+      }
       return
     }
 
@@ -558,6 +664,17 @@ final class HintView: NSView {
   }
 }
 
+/// The letter a key event types, as the layout has it -- which is not where the key sits. Hints are
+/// matched on this, and so is the join key: both are letters someone read off a screen or was told,
+/// rather than positions the hand already knows.
+func typedLetter(_ event: CGEvent) -> String? {
+  var length = 0
+  var characters = [UniChar](repeating: 0, count: 4)
+  event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &length, unicodeString: &characters)
+  guard length == 1, let scalar = Unicode.Scalar(characters[0]) else { return nil }
+  return String(Character(scalar)).lowercased()
+}
+
 /// Shared with the event tap callback, which is a C function pointer and cannot capture context.
 final class Session {
   static var shared: Session!
@@ -579,6 +696,13 @@ final class Session {
   /// Set alongside `chosen` when Command-Shift-C ended the session: the region's text is wanted,
   /// and the shutter is not fired at all.
   var copying = false
+  /// The held region's text with the line breaks joined out, once Shift-J has asked for it. Set
+  /// means the joined form is on screen and is what the copy key will hand over; it survives an
+  /// arrow step and is recomputed for whatever is held next, since the question Shift-J asked was
+  /// about the text and not about that one region.
+  var joined: String?
+  /// How long the text walk may take, which is the same budget the region walk was given.
+  var budgetMs = 2000
   var cancelled = false
   /// The chord that opened this session. The tap is inserted ahead of the hotkey manager, so it
   /// sees that chord before Carbon does and a second press can close what the first opened.
@@ -628,6 +752,10 @@ final class Session {
         CFRunLoopStop(CFRunLoopGetCurrent())
         return
       }
+      // Shift-J before the arrows, which is where a bare J means Down. It is read as the letter the
+      // layout types rather than as the key at J's position, unlike the HJKL beneath it: those are
+      // a hand shape, and this is a word.
+      if event.flags.contains(.maskShift), typedLetter(event) == "j" { join(); return }
       if keyCode == 51 { release() }  // delete, back to the hints
       if let index = heldIndex {
         switch keyCode {
@@ -653,11 +781,7 @@ final class Session {
       if !typed.isEmpty { typed.removeLast(); refresh() }
       return
     }
-    var length = 0
-    var characters = [UniChar](repeating: 0, count: 4)
-    event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &length, unicodeString: &characters)
-    guard length == 1, let scalar = Unicode.Scalar(characters[0]) else { return }
-    let typedCharacter = String(Character(scalar)).lowercased()
+    guard let typedCharacter = typedLetter(event) else { return }
 
     let attempt = typed + typedCharacter
     guard labels.contains(where: { $0.hasPrefix(attempt) }) else { NSSound.beep(); return }
@@ -676,6 +800,23 @@ final class Session {
     held = candidates[index]
     heldIndex = index
     view.selection = view.boxes[index].rect
+    if joined != nil { joined = regionText(candidates[index], budgetMs: budgetMs, separator: " ") }
+    deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// Show the held region's text as one run of prose, or take it back down. A toggle rather than a
+  /// mode with its own exit: what it draws covers the region it describes, so the way back to the
+  /// picture is the key that covered it.
+  func join() {
+    guard let region = held else { return }
+    if joined != nil {
+      joined = nil
+    } else {
+      let text = regionText(region, budgetMs: budgetMs, separator: " ")
+      guard !text.isEmpty else { NSSound.beep(); return }
+      joined = text
+    }
     deadline = Date().addingTimeInterval(30)
     refresh()
   }
@@ -737,12 +878,14 @@ final class Session {
     heldIndex = nil
     descent = []
     typed = ""
+    joined = nil
     view.selection = nil
     refresh()
   }
 
   func refresh() {
     view.typed = typed
+    view.joined = joined
     view.needsDisplay = true
   }
 }
@@ -1062,6 +1205,7 @@ func runSession(_ options: Options) -> Outcome {
   session.labels = labels
   session.candidates = candidates
   session.view = view
+  session.budgetMs = options.budgetMs
   session.cancelChord = options.cancelChord
   Session.shared = session
 
@@ -1095,14 +1239,16 @@ func runSession(_ options: Options) -> Outcome {
 
   // The copy key takes no picture, so there is nothing to wait for the compositor over.
   if session.copying, let chosen = session.chosen {
-    let text = regionText(chosen, budgetMs: options.budgetMs)
+    // Whatever is on screen is what is copied: the joined run if Shift-J put it there, and
+    // otherwise the text laid out the way the region laid it out.
+    let text = session.joined ?? regionText(chosen, budgetMs: options.budgetMs)
     let box = chosen.rect
     guard !text.isEmpty else {
       return Outcome(code: 13, line: "app=\(name) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
     }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=text chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   // Give the window server a beat to composite the overlay away before the shutter.

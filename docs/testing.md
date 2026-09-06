@@ -48,6 +48,13 @@ drive it:
 The hotkey works the same way — `key code 21 using {option down, command down}` — which exercises
 the real path through the running app rather than the CLI.
 
+`key code` and `keystroke` are not interchangeable for anything matched on the *letter* rather than
+the key. A `key code 38 using {shift down}` arrives with no unicode string on it, so the tap reads no
+letter at all and a letter-matched key — the join key — does nothing, while the arrows and Return,
+which are matched on the code, are unaffected. Drive those with `keystroke "J"`, which carries the
+character. A run where one key of a sequence silently did nothing and the rest worked is this, not a
+missed keystroke.
+
 Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,
 and a key sent early is delivered to the target app instead.
 

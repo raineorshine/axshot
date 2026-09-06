@@ -25,10 +25,18 @@ back at the hotkey:
 | `Return` | save the region as a PNG in the save folder |
 | `⌘C` | put that same picture on the clipboard |
 | `⌘⇧C` | put the region's **text** on the clipboard, and take no picture |
+| `⇧J` | show that text joined into one run of prose, which `⌘⇧C` then copies |
+
+`⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into one run of prose — the line breaks the layout put in taken back
+out — and draws it over the region, where the original is still there to check it against. `⌘⇧C`
+then copies that joined form instead. It is a toggle, and it follows the arrows onto whatever is
+held next.
 
 The words come from the same tree the box did — every text element inside the region, in document
 order, clipped to the region the way the shot would be — so it is the region's own text rather than
-anything read back off the pixels.
+anything read back off the pixels. Only what was on screen: the tree also holds the names screen
+readers read for icons, and a name is kept only where it would have fitted inside its own control,
+so the trash can beside a row does not paste the word "Trash".
 
     ./build.sh
 
