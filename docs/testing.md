@@ -275,6 +275,23 @@ heuristic gets built against a guess. Print it: a throwaway option that walks on
 dumps each element's role, child count and every text attribute it carries answers in one run what
 a dozen driven copies only hint at. It comes back out with the same commit that used it.
 
+## Asking who the process is
+
+A run prints nothing about the identity it is running under, and the same build has two. `bin/axshot`
+is a symlink into the bundle and dyld reports the symlink rather than what it points at, so from the
+command line `Bundle.main` is `bin/` with no identifier, while the same executable at its path
+inside `Axshot.app` is the app. Every API that asks the bundle who it is forks there — which
+preferences domain `UserDefaults` reads, which identifier `tccutil` is given.
+
+So drive `bin/axshot` and never `Axshot.app/Contents/MacOS/axshot`. They are the same build and not
+the same process, and the path inside the bundle is the one that passes whether or not the fix is in.
+
+That identity is cheaper to ask of a throwaway bundle than of axshot. Copy the `CFBundleIdentifier`
+into an `Info.plist` beside a few lines of Swift printing whatever is in doubt, build it into a
+`.app`, and run it both ways — at its path and through a symlink to it. It needs no lock, no
+keyboard and no grant of its own, and it is the only cheap way to see the *before*: the real binary
+can only be asked one build at a time, and a fix has to be taken back out to ask it again.
+
 ## Failures that are the environment, not the code
 
 Each of these cost time in the session that built the tool.

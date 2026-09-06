@@ -40,7 +40,11 @@ user was typing into.
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
 | `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
 
-The same binary is the app when launched with no arguments and a CLI when given any. Build output
+The same binary is the app when launched with no arguments and a CLI when given any — the same
+bytes, but not the same process identity. `bin/axshot` is a symlink into the bundle and dyld reports
+the symlink rather than what it points at, so on the command line `Bundle.main` is `bin/` and carries
+no identifier at all. Anything that would otherwise ask the bundle who this is — the preferences
+domain, the identifier handed to `tccutil` — has to name what it wants instead. Build output
 (`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
 
 There is one installed app, `/Applications/Axshot.app`, and the permission grants belong to its
