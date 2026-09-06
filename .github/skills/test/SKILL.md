@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Test an axshot change by installing this branch's build into the live app under a mutex, so parallel sessions do not clobber each other or fight over the keyboard. Use when trying out, verifying, or debugging a change to the walk, the filter, the overlay or the hotkeys."
+description: "Test an axshot change by installing this branch's build into the live app under a mutex, so parallel sessions do not clobber each other or fight over the keyboard. Use for any change the user would see or touch -- the walk, the filter, the overlay, the hotkeys, the settings window, the menu bar menu, or how permissions are asked for -- and invoke it as part of delivering that change, not only when asked to test."
 ---
 
 # Test (drive this branch's build as the installed app)
@@ -20,6 +20,12 @@ photographing it, and which failures are the environment. This skill is the orde
 **None of it needs the user.** The overlay reads posted events, so AppleScript drives the whole
 path. Ask for a human only when the question is how something *looks* and you have already captured
 it and cannot judge.
+
+**And none of it waits to be asked for.** A change the user would see or touch is not delivered by a
+clean compile: what they would look at is not on their machine until step 3 has put it there, so a
+turn that ends "try it and tell me" before the install has parked them in front of the app they
+already had. Run this skill as the last step of building such a change, and hand it over from
+inside the lock.
 
 ## Division of labor
 
