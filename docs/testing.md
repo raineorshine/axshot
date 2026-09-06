@@ -133,6 +133,11 @@ which exists only while the app is regular:
               -e 'delay 0.5' \
               -e 'tell application "System Events" to tell process "Axshot" to click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2'
 
+`build.sh` relaunches the app as part of installing, and the status item is not in the menu bar the
+instant the process is. A script that drives `menu bar 2` in the same breath fails with `Invalid
+index (-1719)`, which reads exactly like the change having broken the menu bar item. Wait a second
+and send it again.
+
 Whether the app is currently an accessory is a shell question, not a visual one:
 
     lsappinfo info -only ApplicationType "Axshot"
@@ -159,6 +164,13 @@ from rewriting the save folder. Close it with `first button of window "Axshot" w
 "AXCloseButton"`, and name the window rather than numbering it: an open panel becomes `window 1`, so
 a retry aimed there reopens the picker it was meant to dismiss.
 
+A control with no name is addressed by its `description` instead. AppleScript's `name` is the tree's
+`AXTitle`, and AppKit gives a segmented control's segments a description and no title — so
+`radio button "Dark"` raises `-1728`, which says "can't get" and reads as the control not being
+there at all, while `first radio button of radio group "Theme" whose description is "Dark"` clicks
+it. Ask the tree which of the two a control answers to (`get {name, description} of ...`) before
+writing the line that drives it; a container is nameless the same way unless its code sets a title.
+
 Stage what the window should be *showing* from the shell; drive only the buttons. It is built once
 and kept, so a `defaults write` does not appear by reopening it — quit the app, write the key, and
 relaunch, and the window comes up on the state you wanted:
@@ -170,13 +182,26 @@ keyboard for as long as it is up, and typing into it obeys the rule above about 
 is frontmost — which, since an open panel does not pin the machine's focus, can be the user's own
 window. Stage the state, then click the named button to test the *action*.
 
+Some states no key reaches: the status line says something only when something has failed. Stage
+those from a throwaway build that calls the setter itself, photograph it, then restore the file and
+rebuild — two builds inside the lock already held. Reaching them by driving the control that fails
+is the trap, because the failure is downstream of the write: recording a chord another app owns
+stores that chord before Carbon refuses it, so the test that produced the message also leaves the
+user with a hotkey that does nothing.
+
 What a control is showing is a shell question too, and a cheaper one than a screenshot:
 
     osascript -e 'tell application "System Events" to tell process "Axshot" to get {name, enabled, position, size} of buttons of window "Axshot"'
 
 `enabled` is the assertion for a control that dims itself rather than hiding. `position` and `size`
 are the assertion that a row of them still fits: the stack's insets leave the window width less
-44pt, and a row that overruns that is not something a screenshot makes obvious.
+44pt, and a row that overruns that is not something a screenshot makes obvious. Height is worth
+reading as well as width once the window sizes itself to its rows — that it grew for a longer
+message, or did not grow for an empty one, is a number rather than a judgement of a picture.
+
+The window's own `position` and `size` are the one `-R` rectangle that is not a guess: both the tree
+and `screencapture -R` speak points, so they compose, and a couple of points of margin on each side
+catches the shadow. That is cheaper and sharper than shrinking a whole screen to fit.
 
 What the *cursor* does over a control is the one thing here that is not a shell question, and it
 looks like one because `screencapture -C` draws the pointer into the picture.
