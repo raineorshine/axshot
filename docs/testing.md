@@ -178,6 +178,14 @@ What a control is showing is a shell question too, and a cheaper one than a scre
 are the assertion that a row of them still fits: the stack's insets leave the window width less
 44pt, and a row that overruns that is not something a screenshot makes obvious.
 
+What the *cursor* does over a control is the one thing here that is not a shell question, and it
+looks like one because `screencapture -C` draws the pointer into the picture.
+`CGWarpMouseCursorPosition` puts the pointer somewhere without the mouse-moved event that makes
+AppKit re-read its cursor rects, so the glyph in the capture lags the position by an unpredictable
+number of steps -- the same point photographs as a hand, an arrow and an I-beam depending only on
+where the pointer was before it. Both a false pass and a false fail, with nothing in the image to
+say which. A hover is one of the few things to hand to the user instead.
+
 An empty window list is how "the install put no settings window on screen" gets asserted — the app
 opens one only when a permission is missing or a hotkey was refused. It is also what a locked screen
 reports for a window that is there, so it is a pass only on a machine that is awake.

@@ -16,7 +16,9 @@ file does not repeat it.
 
 Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
-about to do, before doing it.
+about to do, before doing it. A change to anything the user sees or touches is always about to be
+tested, and nobody has to ask for it: a clean compile is not a place to stop and hand back, because
+the thing the user would look at is not on their machine until `test` has put it there.
 
 ## Driving the app on a live machine
 
@@ -63,7 +65,7 @@ nothing left to do keeps the one for the last stage it reached.
 | `🔒 ` | holding the lock; the installed app is this branch's build |
 | `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
-| `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a hands-on look |
+| `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a look at a build already in front of them |
 | `🪦 ` | dead end — kept for the findings, not to resume |
 | `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
 
@@ -73,7 +75,9 @@ describe. `📚 ` goes on the moment a `learn` skill is invoked, before anything
 and ship prefixes are set by the skills that own them; the rest are set by hand, and nothing
 reconciles a title against reality. Handing back is itself a stage: a response that closes on
 something for the user to do — test it, look at it, decide — is a park, and `🚙 ` goes on before
-that response, since the idle dot cannot tell "waiting on you" from "given up on".
+that response, since the idle dot cannot tell "waiting on you" from "given up on". Waiting on a
+hands-on look is the exception: the lock is held and the installed app is this branch's build for as
+long as they are looking, so that stays `🔒 `, and it is `🚙 ` only once there is nothing to hold.
 
 This vocabulary, and the worktree-and-lock workflow around it, came from the sibling `karabiner`
 repo; its `docs/workflow.md` is where the reasoning lives, and where to look first when a convention
