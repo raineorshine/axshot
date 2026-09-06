@@ -17,7 +17,8 @@ without typing a letter at all. `Delete` returns to the hints; `Escape` — or a
 hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
 bar it would otherwise take to get there. `?` puts the whole list of keys on screen — the
 overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
-down on `?` or `Escape`.
+down on `?` or `Escape`. The same list is on the menu bar as **Keyboard Shortcuts**, for reading it
+without pressing the hotkey first.
 
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:

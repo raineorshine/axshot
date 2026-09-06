@@ -131,14 +131,22 @@
 // order; without that the entry point would only ever lead outwards.
 //
 // A question mark puts the whole list of keys on screen, grouped by whether it is the hints or a
-// held region that reads them, and dims what is behind it. There is nowhere else to put a legend:
-// the overlay covers the screen and the keys are the only interface it has, so the sheet is drawn
-// where the eye is and taken back down by the key that raised it -- or by Escape, which a panel is
+// held region that reads them, and dims what is behind it. There is nowhere else to put a legend
+// mid-session: the overlay covers the screen and the keys are the only interface it has, so the
+// sheet is drawn where the eye is and taken back down by the key that raised it -- or by Escape, which a panel is
 // entitled to before the thing behind the panel is. While it is up every other key is swallowed
 // rather than acted on, since a letter typed under the sheet would hold a region the reader cannot
 // see. The hotkey is spelled out on it as settings spells it, being the one key on the list that is
 // not the same on every machine. It is the character `?` as the layout types it, not the key Shift
 // and slash sit on -- a key picked for what it means, like Shift-J.
+//
+// The same list is a menu bar item, "Keyboard Shortcuts", because `?` is only reachable from inside
+// a session and a session is only opened by someone who already knows the hotkey -- which is the
+// one thing a key list is most wanted for. Off the overlay there is nothing behind the sheet to dim
+// and nothing to go back to, so it is a borderless window that is the sheet and nothing else, taking
+// key so Escape and `?` still close it, and closing when it stops being key: a click elsewhere is
+// how a legend is put down. The window is built fresh each time it is opened, since the hotkey it
+// spells out is a setting that can change between one reading and the next.
 //
 // Only what is visible. A box is kept only where it intersects the focused window, and it is
 // captured clipped to that intersection. An element scrolled out of view still has a frame, and
@@ -729,12 +737,45 @@ final class HintView: NSView {
     }
   }
 
-  /// The shortcut list, laid over the middle of the overlay. Grouped by when each key applies
-  /// rather than listed alphabetically: the hints and a held region take different keys, and the
-  /// sheet is read in the middle of one or the other. Everything behind it is dimmed, since the
-  /// keys it names are the ones that would otherwise be typed at the hints underneath.
+  /// The shortcut list over the middle of the overlay, with everything behind it dimmed: the keys
+  /// it names are the ones that would otherwise be typed at the hints underneath. The sheet itself
+  /// is drawn by `HelpSheet`, which the menu bar opens a window on -- the list is the same list
+  /// whether it is read mid-session or read at leisure.
   private func drawHelp() {
-    let sections: [(String, [(String, String)])] = [
+    NSColor(calibratedWhite: 0, alpha: 0.45).setFill()
+    bounds.fill()
+    let size = HelpSheet.size(hotkey: hotkey)
+    HelpSheet.draw(in: CGRect(x: (bounds.width - size.width) / 2,
+                              y: (bounds.height - size.height) / 2,
+                              width: size.width, height: size.height),
+                   hotkey: hotkey)
+  }
+}
+
+/// The shortcut list, drawn into a rect that is exactly the sheet. Grouped by when each key applies
+/// rather than listed alphabetically: the hints and a held region take different keys, and the sheet
+/// is read in the middle of one or the other. It is measured before it is drawn because it has two
+/// callers that frame it differently -- the overlay centres it on a screen it is already filling,
+/// and the menu bar opens a window that is the sheet and nothing else.
+enum HelpSheet {
+  private static let keyFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
+  private static let textFont = NSFont.systemFont(ofSize: 12)
+  private static let headingFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+
+  private static let padding: CGFloat = 30
+  /// Less above the first heading than below the last row: a heading is set small and its own
+  /// ascent already leaves a gap that the rows underneath do not.
+  private static let topPadding: CGFloat = 22
+  private static let gap: CGFloat = 16
+  private static let rowHeight: CGFloat = 19
+  private static let headingHeight: CGFloat = 20
+  private static let headingGap: CGFloat = 6
+  private static let sectionGap: CGFloat = 22
+
+  /// The hotkey is spelled out as settings spells it, being the one key on the list that is not the
+  /// same on every machine.
+  private static func sections(hotkey: String?) -> [(String, [(String, String)])] {
+    [
       ("Hints", [
         ("a-z", "select the region based on the hint letters"),
       ]),
@@ -754,37 +795,30 @@ final class HintView: NSView {
         ("?", "keyboard shortcuts (you are here)"),
       ]),
     ]
+  }
 
-    let keyFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
-    let textFont = NSFont.systemFont(ofSize: 12)
-    let headingFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    func run(_ string: String, _ font: NSFont, _ alpha: CGFloat) -> NSAttributedString {
-      NSAttributedString(string: string, attributes: [
-        .font: font, .foregroundColor: NSColor(calibratedWhite: 1, alpha: alpha),
-      ])
+  private static func run(_ string: String, _ font: NSFont, _ alpha: CGFloat) -> NSAttributedString {
+    NSAttributedString(string: string, attributes: [
+      .font: font, .foregroundColor: NSColor(calibratedWhite: 1, alpha: alpha),
+    ])
+  }
+
+  /// The alternatives on a row are two ways of pressing the same thing, and the word between them
+  /// is prose rather than a key: set in the text font so the row reads as "this key or that one"
+  /// and not as a chord with letters in it.
+  private static func keys(_ chord: String) -> NSAttributedString {
+    let line = NSMutableAttributedString()
+    for (index, part) in chord.components(separatedBy: " or ").enumerated() {
+      if index > 0 { line.append(run("  or  ", textFont, 0.45)) }
+      line.append(run(part, keyFont, 1))
     }
+    return line
+  }
 
-    /// The alternatives on a row are two ways of pressing the same thing, and the word between them
-    /// is prose rather than a key: set in the text font so the row reads as "this key or that one"
-    /// and not as a chord with letters in it.
-    func keys(_ chord: String) -> NSAttributedString {
-      let line = NSMutableAttributedString()
-      for (index, part) in chord.components(separatedBy: " or ").enumerated() {
-        if index > 0 { line.append(run("  or  ", textFont, 0.45)) }
-        line.append(run(part, keyFont, 1))
-      }
-      return line
-    }
-
-    let padding: CGFloat = 30
-    /// Less above the first heading than below the last row: a heading is set small and its own
-    /// ascent already leaves a gap that the rows underneath do not.
-    let topPadding: CGFloat = 22
-    let gap: CGFloat = 16
-    let rowHeight: CGFloat = 19
-    let headingHeight: CGFloat = 20
-    let headingGap: CGFloat = 6
-    let sectionGap: CGFloat = 22
+  /// The width of the widest row and the height of every row stacked: the sheet is as big as its
+  /// contents and never scrolls, so this is the only size it has.
+  static func size(hotkey: String?) -> CGSize {
+    let sections = sections(hotkey: hotkey)
     let rows = sections.flatMap { $0.1 }
     let keyColumn = rows.map { keys($0.0).size().width }.max() ?? 0
     let textColumn = max(
@@ -793,13 +827,15 @@ final class HintView: NSView {
     let height = topPadding + padding + sections.reduce(-sectionGap) { total, section in
       total + headingHeight + headingGap + CGFloat(section.1.count) * rowHeight + sectionGap
     }
-    let panel = CGRect(x: (bounds.width - (padding * 2 + keyColumn + gap + textColumn)) / 2,
-                       y: (bounds.height - height) / 2,
-                       width: padding * 2 + keyColumn + gap + textColumn,
-                       height: height)
+    return CGSize(width: padding * 2 + keyColumn + gap + textColumn, height: height)
+  }
 
-    NSColor(calibratedWhite: 0, alpha: 0.45).setFill()
-    bounds.fill()
+  /// `panel` is the sheet's own frame, which is what `size` returned. Nothing outside it is touched:
+  /// dimming what is behind the sheet belongs to the caller that has something behind it.
+  static func draw(in panel: CGRect, hotkey: String?) {
+    let sections = sections(hotkey: hotkey)
+    let keyColumn = sections.flatMap { $0.1 }.map { keys($0.0).size().width }.max() ?? 0
+
     let rounded = NSBezierPath(roundedRect: panel, xRadius: 10, yRadius: 10)
     NSColor(calibratedWhite: 0.08, alpha: 0.96).setFill()
     rounded.fill()
@@ -2224,11 +2260,72 @@ extension SettingsWindow: NSWindowDelegate {
   }
 }
 
+// MARK: - Shortcut list window
+
+/// The sheet on its own, opened from the menu bar. `?` reaches the same list from inside a session,
+/// but a session is only ever opened by someone who already knows the hotkey -- the menu is where
+/// the keys can be looked up by someone who does not, which is who a key list is for.
+final class HelpWindow: NSWindowController, NSWindowDelegate {
+  convenience init() {
+    let size = HelpSheet.size(hotkey: Settings.chord.display)
+    let window = HelpPanel(contentRect: CGRect(origin: .zero, size: size),
+                           styleMask: .borderless, backing: .buffered, defer: false)
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    window.hasShadow = true
+    // Above ordinary windows, and nowhere near the overlay's screen-saver level: this one is read
+    // while nothing else of the app's is on screen.
+    window.level = .floating
+    window.contentView = HelpSheetView()
+    self.init(window: window)
+    window.delegate = self
+    window.center()
+  }
+
+  /// Clicking anywhere else puts the list away. The app is an accessory and this window is the only
+  /// thing it had on screen, so losing key means the reader has gone back to their own work.
+  func windowDidResignKey(_ notification: Notification) {
+    window?.close()
+  }
+}
+
+/// A borderless window refuses key by default, and this one is dismissed by a keystroke.
+final class HelpPanel: NSWindow {
+  override var canBecomeKey: Bool { true }
+}
+
+/// The sheet at its own size, and the keys that take it back down. Nothing on the list is a control,
+/// so any click at all is a dismissal rather than a hit test.
+final class HelpSheetView: NSView {
+  override var acceptsFirstResponder: Bool { true }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor.clear.set()
+    dirtyRect.fill()
+    // Half a point in, so the sheet's own border is inside the window rather than clipped by it.
+    HelpSheet.draw(in: bounds.insetBy(dx: 0.5, dy: 0.5), hotkey: Settings.chord.display)
+  }
+
+  override func keyDown(with event: NSEvent) {
+    // Escape, or `?` again: the two keys that close the list inside a session close it here too.
+    if event.keyCode == 53 || event.characters == "?" {
+      window?.close()
+      return
+    }
+    super.keyDown(with: event)
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    window?.close()
+  }
+}
+
 // MARK: - Menu bar app
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem!
   private var settings: SettingsWindow?
+  private var help: HelpWindow?
   private var busy = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -2240,6 +2337,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     capture.target = self
     menu.addItem(capture)
     menu.addItem(.separator())
+    // No key equivalent, unlike Settings: `?` opens this list from the overlay, but it is a bare
+    // key there and a menu can only offer it under Command, which is a chord nothing answers.
+    let shortcuts = NSMenuItem(title: "Keyboard Shortcuts", action: #selector(showShortcuts), keyEquivalent: "")
+    shortcuts.target = self
+    menu.addItem(shortcuts)
     let preferences = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
     preferences.target = self
     menu.addItem(preferences)
@@ -2318,6 +2420,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     alert.alertStyle = .warning
     NSApp.activate(ignoringOtherApps: true)
     alert.runModal()
+  }
+
+  /// A new window every time rather than one kept around: the sheet is laid out around the hotkey,
+  /// which settings can change between one reading of the list and the next.
+  @objc func showShortcuts() {
+    help?.close()
+    help = HelpWindow()
+    NSApp.activate(ignoringOtherApps: true)
+    help?.showWindow(nil)
+    help?.window?.makeKeyAndOrderFront(nil)
+    if let view = help?.window?.contentView { help?.window?.makeFirstResponder(view) }
   }
 
   @objc func showSettings() {
