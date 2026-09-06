@@ -2354,11 +2354,20 @@ final class SettingsWindow: NSWindowController {
     }
   }
 
+  // `.systemGreen` is tuned to shout from a control, and on the settings window's near-black it
+  // reads as neon. A grant is a resting state, not an alert, so the word is drawn in a muted green
+  // picked per appearance: dark enough to sit against white, light enough to sit against black.
+  private static let grantedColor = NSColor(name: "granted") { appearance in
+    appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      ? NSColor(calibratedRed: 0.51, green: 0.73, blue: 0.54, alpha: 1)
+      : NSColor(calibratedRed: 0.20, green: 0.45, blue: 0.26, alpha: 1)
+  }
+
   private func refreshPermissions() {
     for (permission, state, button) in permissionRows {
       let granted = permission.granted
       state.stringValue = granted ? "Granted" : "Not granted"
-      state.textColor = granted ? .systemGreen : .systemOrange
+      state.textColor = granted ? Self.grantedColor : .systemOrange
       button.isHidden = granted
       button.toolTip = permission.explanation
       if granted { askedAt[button.tag] = nil }
