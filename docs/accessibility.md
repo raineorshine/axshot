@@ -15,9 +15,11 @@ of them here — then has `nextKeyView` nil the whole way round. Tab lands on th
 take it and stays there for ever. Nothing warns, every control draws correctly, and none of them can
 be reached. Set it before the subviews go in.
 
-Check it by pressing Tab and reading `focused` back out of the tree, never by looking: Full Keyboard
-Access has to be on for Tab to reach a button at all (`defaults read -g AppleKeyboardUIMode`, 2 or
-3), and a loop that was never wired and a machine with the setting off are the same picture.
+Check it by pressing Tab and reading `focused` back out of the tree, never by looking — walking a
+window's elements from a shell is in
+[testing.md](testing.md#driving-the-menu-bar-item-and-the-settings-window). Full Keyboard Access has
+to be on for Tab to reach a button at all (`defaults read -g AppleKeyboardUIMode`, 2 or 3), and a
+loop that was never wired and a machine with the setting off are the same picture.
 
 A view that Tab can land on has to show that it has been landed on. `drawFocusRingMask` plus
 `focusRingMaskBounds` is the whole of it — AppKit draws the standard ring off the mask, and a ring

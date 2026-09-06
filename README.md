@@ -31,11 +31,12 @@ back at the hotkey, and two keys that put the region's words on screen first:
 | `⇧J` | show that text joined into one run of prose, which either copy chord then copies |
 | `⇧T` | transcribe the region's *picture* instead, for when the tree has no text |
 
-`⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into one run of prose — the line breaks the layout put in taken back
-out — and draws it over the region, where the original is still there to check it against. `⌘⇧C`
-then copies that joined form instead — and so does a bare `⌘C`, which drops the picture while a join
-is up, since the picture would be of the region the join is drawn over. It is a toggle, and it
-follows the arrows onto whatever is held next.
+`⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into
+one run of prose — the line breaks the layout put in taken back out — and draws it over the region,
+where the original is still there to check it against. `⌘⇧C` then copies that joined form instead —
+and so does a bare `⌘C`, which drops the picture while a join is up, since the picture would be of
+the region the join is drawn over. It is a toggle, and it follows the arrows onto whatever is held
+next.
 
 The words come from the same tree the box did — every text element inside the region, in document
 order, clipped to the region the way the shot would be — so it is the region's own text rather than
@@ -47,12 +48,11 @@ so the trash can beside a row does not paste the word "Trash".
 table, anywhere `⇧J` just beeps. It photographs the held region, sends the picture to the Claude API
 to be transcribed, and draws the answer in the same box `⇧J` draws in, for the same two chords to
 copy. The mask stays up across that photograph — it never covered the region — and only the corner
-brackets come off, which would otherwise be transcribed along with it; ordering the whole overlay out
-would take the same picture but unmask and re-mask around the shutter. It is a toggle like `⇧J`, and
-toggling it is free — the answer
-is kept while the region stays held, so it goes off and back on without asking again. What it does
-not do is follow the arrows: the transcription was of that region's picture, and re-reading the next
-one is another call nobody asked for.
+brackets come off, which would otherwise be transcribed along with it; ordering the whole overlay
+out would take the same picture but unmask and re-mask around the shutter. It is a toggle like `⇧J`,
+and toggling it is free — the answer is kept while the region stays held, so it goes off and back on
+without asking again. What it does not do is follow the arrows: the transcription was of that
+region's picture, and re-reading the next one is another call nobody asked for.
 
 While the request is out the overlay says `Transcribing…` and the keyboard stays swallowed; `Escape`
 cancels. A region costs roughly half a cent on `claude-opus-5` — about 1200 input tokens for a
@@ -116,7 +116,8 @@ Given arguments, the same binary is a CLI instead of the app. `bin/axshot` links
 
 `axshot.swift`'s header comment is the full reference: every option, and why each part works the way
 it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, with guides on
-[permissions](docs/permissions.md) and [testing](docs/testing.md).
+[permissions](docs/permissions.md), [testing](docs/testing.md) and
+[accessibility](docs/accessibility.md).
 
 ## Permission
 

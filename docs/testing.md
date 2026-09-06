@@ -283,11 +283,9 @@ a dozen driven copies only hint at. It comes back out with the same commit that 
 
 ## Asking who the process is
 
-A run prints nothing about the identity it is running under, and the same build has two. `bin/axshot`
-is a symlink into the bundle and dyld reports the symlink rather than what it points at, so from the
-command line `Bundle.main` is `bin/` with no identifier, while the same executable at its path
-inside `Axshot.app` is the app. Every API that asks the bundle who it is forks there — which
-preferences domain `UserDefaults` reads, which identifier `tccutil` is given.
+A run prints nothing about the identity it is running under, and the same build has two: from the
+command line `Bundle.main` is `bin/` and carries no identifier, while the same executable at its
+path inside `Axshot.app` is the app. AGENTS.md's "Layout" is why, and which APIs fork on it.
 
 So drive `bin/axshot` and never `Axshot.app/Contents/MacOS/axshot`. They are the same build and not
 the same process, and the path inside the bundle is the one that passes whether or not the fix is in.

@@ -104,7 +104,8 @@ display; and **the overlay is not in the image**. That last one is the regressio
 otherwise ship quietly.
 
 After any change to the filter, the hint alphabet or the drawing, photograph the overlay itself
-(docs/testing.md) and look at hint density and placement.
+([docs/testing.md](../../../docs/testing.md#seeing-the-overlay)) and look at hint density and
+placement.
 
 ### 6. Iterate without releasing
 
@@ -118,8 +119,8 @@ window, the menu, the hotkeys, focus, permission prompts. Releasing restores the
 the moment the lock drops there is nothing of the change left to try. Keep it held, tell them this
 branch is live and what to look at, and wait for their answer. That wait is this skill's own, not a
 gate on the next one: `ship` runs when the user says to ship, tested or not, and their word is the
-answer this step was waiting for. Stay `🔒 ` while waiting — the lock is held and the installed app is this
-branch's build, which is exactly what the prefix says.
+answer this step was waiting for. Stay `🔒 ` while waiting — the lock is held and the installed app
+is this branch's build, which is exactly what the prefix says.
 
 Iterate under the same lock until they are happy, then release.
 

@@ -16,6 +16,8 @@ file does not repeat it.
 - [docs/accessibility.md](docs/accessibility.md) — what a new control owes the tree and the
   keyboard, and the AppKit defaults that leave one drawn correctly and reachable by nothing.
 
+## Skills
+
 Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
 about to do, before doing it — `.github/skills/` is not a directory the `Skill` tool loads from, so
@@ -23,15 +25,6 @@ these are files to open and follow by hand, and asking for one by name only repo
 skill exists. A change to anything the user sees or touches is always about to be tested, and nobody
 has to ask for it: a clean compile is not a place to stop and hand back, because the thing the user
 would look at is not on their machine until `test` has put it there.
-
-## Driving the app on a live machine
-
-The user is at the keyboard doing their own work while a test runs, and every drive of the real app
-brings some window to the front. Hold the foreground for a second, not for a stretch: activate,
-send the hint, send Return, and let go. Everything that is not the keystrokes — reading `--dump`
-output, checking the PNG, deciding what the labels mean — happens before the sequence starts or
-after the capture lands, never in the middle of it with a window parked in front of whatever the
-user was typing into.
 
 ## Layout
 
@@ -46,14 +39,25 @@ The same binary is the app when launched with no arguments and a CLI when given 
 bytes, but not the same process identity. `bin/axshot` is a symlink into the bundle and dyld reports
 the symlink rather than what it points at, so on the command line `Bundle.main` is `bin/` and carries
 no identifier at all. Anything that would otherwise ask the bundle who this is — the preferences
-domain, the identifier handed to `tccutil` — has to name what it wants instead. Build output
-(`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
+domain, the identifier handed to `tccutil` — has to name what it wants instead. Which identity a run
+picked up is a shell question, and [docs/testing.md](docs/testing.md#asking-who-the-process-is) is
+how to ask it. Build output (`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
 
 There is one installed app, `/Applications/Axshot.app`, and the permission grants belong to its
 signature rather than its path — so any build signed with the same certificate satisfies them
 wherever it sits. What is genuinely single is the running instance, which owns the global hotkeys,
 and the login item, which names one bundle path. `build.sh` compiles inside the checkout and installs
 from there through the lock, which refuses while another session is driving the app.
+
+## Driving the app on a live machine
+
+The user is at the keyboard doing their own work while a test runs, and every drive of the real app
+brings some window to the front. Hold the foreground for a second, not for a stretch: activate,
+send the hint, send Return, and let go. Everything that is not the keystrokes — reading `--dump`
+output, checking the PNG, deciding what the labels mean — happens before the sequence starts or
+after the capture lands, never in the middle of it with a window parked in front of whatever the
+user was typing into. What a run has to undo before it ends is the last section of
+[docs/testing.md](docs/testing.md#leaving-the-machine-as-you-found-it).
 
 ## Session titles
 
@@ -128,8 +132,9 @@ explained where it is implemented.
 - **A control is named, reachable by Tab and legible at 4.5:1.** What the app draws is pictures — a
   hint plate, a chord box, a swatch, a thumbnail — and a picture says nothing to a reader and
   answers no key by itself, so each carries its own title, value and press and takes Space the way a
-  button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader gets
-  Escape and nothing else.
+  button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader
+  gets Escape and nothing else. [docs/accessibility.md](docs/accessibility.md) is the set of ways
+  this looks done when it is not.
 - **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
   title bar inactive, and the screenshot would show that.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord

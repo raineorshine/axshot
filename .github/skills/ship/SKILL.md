@@ -145,6 +145,8 @@ now (`📦 ` for a tested branch, none otherwise). Do not report this step.
 - If the change altered the settings window, the hotkeys, or how permissions are asked for, check
   that `README.md` and `docs/` still describe what the app does. They are hand-written; nothing
   regenerates them.
+- A doc added to `docs/` is listed in two places by hand — AGENTS.md's "Guides" and the line in
+  `README.md` under "Command line" — and neither notices when it is not.
 - The branch is now on `origin/main`. If this worktree is finished with, it and the branch can be
   cleaned up from the main checkout:
 
@@ -156,10 +158,11 @@ now (`📦 ` for a tested branch, none otherwise). Do not report this step.
 
 ### 9. Extract the learnings
 
-Invoke the `learn` skill. A shipped change is the moment its lessons are worth writing down: the
-branch is landed, nothing is pending, and whatever the session learned about the app, the tree or
-the workflow is still in context — an hour later it is in nobody's. This is not optional and the
-user does not have to ask for it; it is the last stage of shipping.
+Invoke the `learn` skill — a real `Skill` tool skill, unlike the two files in `.github/skills/`. A
+shipped change is the moment its lessons are worth writing down: the branch is landed, nothing is
+pending, and whatever the session learned about the app, the tree or the workflow is still in
+context — an hour later it is in nobody's. This is not optional and the user does not have to ask
+for it; it is the last stage of shipping.
 
 `learn` puts `📚 ` on the title, replacing the `🚀 `. Put `🚀 ` back when it finishes: the session
 shipped, and that is the stage it rests at.
