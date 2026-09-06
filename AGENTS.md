@@ -16,9 +16,11 @@ file does not repeat it.
 
 Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
-about to do, before doing it. A change to anything the user sees or touches is always about to be
-tested, and nobody has to ask for it: a clean compile is not a place to stop and hand back, because
-the thing the user would look at is not on their machine until `test` has put it there.
+about to do, before doing it — `.github/skills/` is not a directory the `Skill` tool loads from, so
+these are files to open and follow by hand, and asking for one by name only reports that no such
+skill exists. A change to anything the user sees or touches is always about to be tested, and nobody
+has to ask for it: a clean compile is not a place to stop and hand back, because the thing the user
+would look at is not on their machine until `test` has put it there.
 
 ## Driving the app on a live machine
 
