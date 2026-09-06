@@ -63,7 +63,7 @@ nothing left to do keeps the one for the last stage it reached.
 | `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
 | `🔓 ` | about to take the lock, or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
-| `📦 ` | tested, passed the user's own hands-on look, and shippable without re-testing |
+| `📦 ` | tested, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
 | `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a look at a build already in front of them |
 | `🪦 ` | dead end — kept for the findings, not to resume |
