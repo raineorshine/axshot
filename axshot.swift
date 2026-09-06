@@ -2035,17 +2035,33 @@ enum Theme: String, CaseIterable {
 }
 
 enum Settings {
+  /// The bundle identifier, as the preferences domain rather than as a bundle. `UserDefaults`
+  /// derives its own domain from whatever `Bundle.main` turns out to be, and on the command line
+  /// that is not this app: `bin/axshot` is a symlink into the bundle, dyld reports the symlink
+  /// rather than what it points at, so the main bundle comes out as `bin/` with no identifier at
+  /// all and `.standard` lands in a nameless per-process domain that nothing has ever written. The
+  /// settings the app saved are still there; the CLI was reading somewhere else and getting every
+  /// fallback back. Naming the domain outright makes both processes read the one file.
+  static let domain = "com.raine.axshot"
+
+  /// Reads and writes `domain` from inside the app and from the command line alike. It has to be
+  /// spelled two ways to do that: `UserDefaults` rejects a suite that names the running process's
+  /// own bundle -- it logs "does not make sense and will not work" and then returns nothing -- so
+  /// where the identifier did resolve, the domain is already `.standard` and asking for it by name
+  /// is the way to get nothing back.
+  private static let store: UserDefaults =
+    Bundle.main.bundleIdentifier == domain ? .standard : (UserDefaults(suiteName: domain) ?? .standard)
+
   static var chord: Chord {
-    let defaults = UserDefaults.standard
-    guard defaults.object(forKey: "hotKeyCode") != nil else { return HotKey.fallback }
+    guard store.object(forKey: "hotKeyCode") != nil else { return HotKey.fallback }
     return Chord(
-      keyCode: UInt32(defaults.integer(forKey: "hotKeyCode")),
-      modifiers: UInt32(defaults.integer(forKey: "hotKeyModifiers")))
+      keyCode: UInt32(store.integer(forKey: "hotKeyCode")),
+      modifiers: UInt32(store.integer(forKey: "hotKeyModifiers")))
   }
 
   static func setChord(_ chord: Chord) {
-    UserDefaults.standard.set(Int(chord.keyCode), forKey: "hotKeyCode")
-    UserDefaults.standard.set(Int(chord.modifiers), forKey: "hotKeyModifiers")
+    store.set(Int(chord.keyCode), forKey: "hotKeyCode")
+    store.set(Int(chord.modifiers), forKey: "hotKeyModifiers")
   }
 
   /// Where captures are saved. Unset, this follows wherever macOS has been told to put its own
@@ -2053,39 +2069,39 @@ enum Settings {
   /// which is where macOS puts them when it has been told nothing.
   static var saveDirectory: String {
     get {
-      if let chosen = UserDefaults.standard.string(forKey: "saveDirectory"), !chosen.isEmpty { return chosen }
+      if let chosen = store.string(forKey: "saveDirectory"), !chosen.isEmpty { return chosen }
       if let system = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location"), !system.isEmpty {
         return (system as NSString).expandingTildeInPath
       }
       return NSHomeDirectory() + "/Desktop"
     }
-    set { UserDefaults.standard.set(newValue, forKey: "saveDirectory") }
+    set { store.set(newValue, forKey: "saveDirectory") }
   }
 
   /// True while no folder has been chosen, so captures are still landing wherever macOS is putting
   /// its own screenshots. The settings window uses it to know whether there is anything to undo.
   static var followsSystemFolder: Bool {
-    (UserDefaults.standard.string(forKey: "saveDirectory") ?? "").isEmpty
+    (store.string(forKey: "saveDirectory") ?? "").isEmpty
   }
 
   /// How the hint plates are drawn. Stored by name rather than by index, so a style added or
   /// reordered later does not silently repoint what someone already chose.
   static var hintStyle: HintStyle {
-    get { HintStyle(rawValue: UserDefaults.standard.string(forKey: "hintStyle") ?? "") ?? .grey }
-    set { UserDefaults.standard.set(newValue.rawValue, forKey: "hintStyle") }
+    get { HintStyle(rawValue: store.string(forKey: "hintStyle") ?? "") ?? .grey }
+    set { store.set(newValue.rawValue, forKey: "hintStyle") }
   }
 
   /// What the app's own windows look like. Stored by name for the same reason the hint style is,
   /// and defaulting to following macOS.
   static var theme: Theme {
-    get { Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .system }
-    set { UserDefaults.standard.set(newValue.rawValue, forKey: "theme") }
+    get { Theme(rawValue: store.string(forKey: "theme") ?? "") ?? .system }
+    set { store.set(newValue.rawValue, forKey: "theme") }
   }
 
   /// Forgets a chosen folder. Choosing one is otherwise a one-way door: the panel always writes a
   /// path, so without this the folder macOS is using can never be got back to by name.
   static func followSystemFolder() {
-    UserDefaults.standard.removeObject(forKey: "saveDirectory")
+    store.removeObject(forKey: "saveDirectory")
   }
 }
 
