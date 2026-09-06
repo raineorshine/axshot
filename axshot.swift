@@ -56,9 +56,11 @@
 // opens settings, held region or not, since the overlay is in the way of the menu bar and what a
 // shortcut needs changing for is generally the screen it was pressed on.
 //
-// The plates are a light grey gradient, and yellow is offered in settings for the pages busy enough
-// to lose a quiet plate in. Which one reads better is a property of the window underneath rather
-// than of the app, so it is a setting and not a rule.
+// The plates are a light grey gradient by default, and settings offers four more -- dark, yellow,
+// blue, pink -- picked by clicking the plate rather than a name for it. Which one reads better is a
+// property of the window underneath rather than of the app, so it is a setting and not a rule: the
+// list runs from the ones that leave the window as the thing being looked at to the ones that no
+// interface has anywhere else on screen.
 //
 // A hold has three ways out, and one hotkey, because which one a region wants is only clear once
 // the region is on screen and masked: Return writes the PNG to the save folder, Command-C puts the
@@ -596,17 +598,60 @@ let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
 /// quiet enough not to be the first thing the eye lands on, and the yellow is loud enough to be
 /// found on a page dense enough to lose a plate in.
 enum HintStyle: String, CaseIterable {
-  /// The default. A light grey plate, shaded top to bottom: flat grey on a grey window is the one
-  /// background this has to survive, and a gradient gives the plate an edge that a single tone
-  /// does not.
+  /// The default. Quiet enough to leave the window it is sitting on as the thing being looked at.
   case grey
-  /// The original, for a page busy enough that a quiet plate is one more thing to find.
+  /// The grey's opposite number, for pale content: as quiet in hue, and as far from the page as a
+  /// plate can get without a colour.
+  case dark
+  /// The original, and the loudest of the warm ones.
   case yellow
+  /// Cool and saturated, which almost no page's text is -- the plates separate from the words even
+  /// where they land on top of them.
+  case blue
+  /// The one that appears in the fewest interfaces, for a screen busy enough that every other
+  /// plate colour is also somewhere in the window underneath it.
+  case pink
 
   var title: String {
     switch self {
-    case .grey: return "Grey gradient"
+    case .grey: return "Grey"
+    case .dark: return "Dark"
     case .yellow: return "Yellow"
+    case .blue: return "Blue"
+    case .pink: return "Pink"
+    }
+  }
+
+  /// The fill, top to bottom. Every style is a gradient rather than a colour: a plate shaded the way
+  /// the light falls reads as sitting on the window rather than as a hole cut in it, and the shading
+  /// is what keeps an edge where the plate lands on something its own colour.
+  private var gradient: (top: NSColor, bottom: NSColor) {
+    switch self {
+    case .grey:
+      return (NSColor(calibratedWhite: 0.97, alpha: 0.96), NSColor(calibratedWhite: 0.78, alpha: 0.96))
+    case .dark:
+      return (NSColor(calibratedWhite: 0.26, alpha: 0.96), NSColor(calibratedWhite: 0.08, alpha: 0.96))
+    case .yellow:
+      return (NSColor(calibratedRed: 1.0, green: 0.90, blue: 0.45, alpha: 0.96),
+              NSColor(calibratedRed: 1.0, green: 0.80, blue: 0.25, alpha: 0.96))
+    case .blue:
+      return (NSColor(calibratedRed: 0.32, green: 0.60, blue: 1.0, alpha: 0.96),
+              NSColor(calibratedRed: 0.10, green: 0.38, blue: 0.90, alpha: 0.96))
+    case .pink:
+      return (NSColor(calibratedRed: 1.0, green: 0.47, blue: 0.74, alpha: 0.96),
+              NSColor(calibratedRed: 0.92, green: 0.24, blue: 0.57, alpha: 0.96))
+    }
+  }
+
+  /// Dark enough to hold the plate's shape against a page of the same tone, since the fill alone
+  /// cannot: a light plate on white and a dark plate on black both need the outline to exist.
+  private var border: NSColor {
+    switch self {
+    case .grey: return NSColor(calibratedWhite: 0.45, alpha: 0.9)
+    case .dark: return NSColor(calibratedWhite: 0.78, alpha: 0.7)
+    case .yellow: return NSColor(calibratedRed: 0.35, green: 0.25, blue: 0.0, alpha: 0.9)
+    case .blue: return NSColor(calibratedRed: 0.04, green: 0.18, blue: 0.48, alpha: 0.9)
+    case .pink: return NSColor(calibratedRed: 0.45, green: 0.05, blue: 0.26, alpha: 0.9)
     }
   }
 
@@ -614,13 +659,7 @@ enum HintStyle: String, CaseIterable {
     switch self {
     case .grey: return NSColor(calibratedWhite: 0.1, alpha: 1)
     case .yellow: return .black
-    }
-  }
-
-  private var border: NSColor {
-    switch self {
-    case .grey: return NSColor(calibratedWhite: 0.45, alpha: 0.9)
-    case .yellow: return NSColor(calibratedRed: 0.35, green: 0.25, blue: 0.0, alpha: 0.9)
+    case .dark, .blue, .pink: return .white
     }
   }
 
@@ -643,18 +682,8 @@ enum HintStyle: String, CaseIterable {
     let size = plateSize(label)
     let plate = CGRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height)
     let rounded = NSBezierPath(roundedRect: plate, xRadius: 3, yRadius: 3)
-    switch self {
-    case .grey:
-      // Downwards, which is where the light is: the plate reads as raised rather than as a
-      // rectangle someone forgot to colour in.
-      NSGradient(
-        starting: NSColor(calibratedWhite: 0.97, alpha: 0.96),
-        ending: NSColor(calibratedWhite: 0.78, alpha: 0.96))?
-        .draw(in: rounded, angle: -90)
-    case .yellow:
-      NSColor(calibratedRed: 1.0, green: 0.85, blue: 0.35, alpha: 0.96).setFill()
-      rounded.fill()
-    }
+    // Downwards, which is where the light is.
+    NSGradient(starting: gradient.top, ending: gradient.bottom)?.draw(in: rounded, angle: -90)
     border.setStroke()
     rounded.lineWidth = 1
     rounded.stroke()
@@ -2194,7 +2223,11 @@ final class SettingsWindow: NSWindowController {
     }
     let styleRow = NSStackView(views: [styleCaption] + swatches)
     styleRow.orientation = .horizontal
-    styleRow.spacing = 10
+    // Flush, because they are one control rather than five: each swatch already carries the air its
+    // selection ring needs, and a gap on top of that reads as five separate settings. The caption
+    // keeps the spacing every other row's caption has.
+    styleRow.spacing = 0
+    styleRow.setCustomSpacing(12, after: styleCaption)
     styleCaption.widthAnchor.constraint(equalToConstant: 150).isActive = true
 
     folder.font = .systemFont(ofSize: 12)

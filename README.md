@@ -82,10 +82,11 @@ macOS has been told to put its own screenshots, and falls back to the Desktop. R
 drops a folder you picked and goes back to following macOS. Files are timestamped:
 `Axshot 2026-09-05 at 12.34.56.png`.
 
-Hint style, also in Settings, is what the hint plates look like: a light grey gradient, which is the
-default and stays out of the way of what you are looking at, or yellow, which is loud enough to be
-found on a page dense enough to lose a plate in. They are picked by clicking the plate itself rather
-than a name for it, and apply from the next capture.
+Hint style, also in Settings, is what the hint plates look like. Five of them, quietest first: grey,
+the default, which leaves the window as the thing being looked at; dark, its opposite number for
+pale content; yellow, the loudest of the warm ones; blue, which almost no page's text is; and pink,
+for a screen busy enough that every other plate colour is already somewhere in it. They are picked
+by clicking the plate itself rather than a name for it, and apply from the next capture.
 
 Resident, but only as a listener. An idle hotkey costs nothing and the tree is still walked on
 demand; nothing is cached between captures. See "Measured" for why.
