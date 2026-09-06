@@ -2063,6 +2063,8 @@ final class RecorderView: NSView {
 
   override var acceptsFirstResponder: Bool { true }
 
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
   override func mouseDown(with event: NSEvent) {
     recording = true
     window?.makeFirstResponder(self)
@@ -2144,6 +2146,8 @@ final class SwatchView: NSView {
   /// accessibility tree.
   override var intrinsicContentSize: NSSize { NSSize(width: 44, height: 34) }
 
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
   override func mouseDown(with event: NSEvent) { onSelect?(style) }
 
   // Named and pressable through the accessibility tree, which is how a screen reader reaches a
@@ -2176,10 +2180,26 @@ final class SwatchView: NSView {
   }
 }
 
+/// An `NSButton` that says it is clickable by the cursor as well as by its border. AppKit leaves the
+/// arrow in place over every control, which reads as "nothing here" on the borderless rows this
+/// window is mostly made of; the swatches and the recorder answer the same way.
+final class PointerButton: NSButton {
+  // A disabled button is not clickable, so it keeps the arrow. Cursor rects are rebuilt only when
+  // something asks, and enabling is not one of the things that asks -- hence the invalidation.
+  override var isEnabled: Bool {
+    didSet { window?.invalidateCursorRects(for: self) }
+  }
+
+  override func resetCursorRects() {
+    guard isEnabled else { return }
+    addCursorRect(bounds, cursor: .pointingHand)
+  }
+}
+
 final class SettingsWindow: NSWindowController {
   private var recorder: RecorderView!
   private let folder = NSTextField(labelWithString: "")
-  private let resetFolder = NSButton(title: "Reset", target: nil, action: nil)
+  private let resetFolder = PointerButton(title: "Reset", target: nil, action: nil)
   private let status = NSTextField(labelWithString: "")
   private var swatches: [SwatchView] = []
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
@@ -2234,7 +2254,7 @@ final class SettingsWindow: NSWindowController {
     folder.textColor = .secondaryLabelColor
     // Truncate the head: the tail of a path is the part that identifies it.
     folder.lineBreakMode = .byTruncatingHead
-    let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseFolder))
+    let choose = PointerButton(title: "Choose…", target: self, action: #selector(chooseFolder))
     let folderCaption = NSTextField(labelWithString: "Save to")
     folderCaption.font = .systemFont(ofSize: 13)
     // Always on screen, and dimmed while there is nothing to undo: a control that appears only
@@ -2257,7 +2277,7 @@ final class SettingsWindow: NSWindowController {
     status.lineBreakMode = .byWordWrapping
     status.maximumNumberOfLines = 2
 
-    let launch = NSButton(checkboxWithTitle: "Launch at login", target: self, action: #selector(toggleLaunch(_:)))
+    let launch = PointerButton(checkboxWithTitle: "Launch at login", target: self, action: #selector(toggleLaunch(_:)))
     launch.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
     var permissionViews: [NSView] = [separator()]
@@ -2269,7 +2289,7 @@ final class SettingsWindow: NSWindowController {
       caption.font = .systemFont(ofSize: 13)
       let state = NSTextField(labelWithString: "")
       state.font = .systemFont(ofSize: 11)
-      let button = NSButton(title: "Grant…", target: self, action: #selector(grant(_:)))
+      let button = PointerButton(title: "Grant…", target: self, action: #selector(grant(_:)))
       button.tag = permission == .accessibility ? 0 : 1
 
       let row = NSStackView(views: [caption, state, button])
@@ -2283,7 +2303,7 @@ final class SettingsWindow: NSWindowController {
       permissionViews.append(row)
     }
 
-    let relaunch = NSButton(title: "Relaunch", target: self, action: #selector(relaunchApp))
+    let relaunch = PointerButton(title: "Relaunch", target: self, action: #selector(relaunchApp))
     relaunch.toolTip = "Accessibility only takes effect after a restart."
     let relaunchRow = NSStackView(views: [NSTextField(labelWithString: "After granting Accessibility"), relaunch])
     relaunchRow.orientation = .horizontal
