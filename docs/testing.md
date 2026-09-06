@@ -171,6 +171,12 @@ there at all, while `first radio button of radio group "Theme" whose description
 it. Ask the tree which of the two a control answers to (`get {name, description} of ...`) before
 writing the line that drives it; a container is nameless the same way unless its code sets a title.
 
+`entire contents of window 1` raises `Can't make item 1 of entire contents … into type specifier`
+here, so the flat whole-tree read that works elsewhere is not available — walk `UI elements`
+recursively instead. Dumping role, title, description, value, help and `focused` for every element
+answers both "is this control named" and "where did Tab go" from the shell, which is the only way to
+ask the second one at all: a focus ring is a picture, and the tree is where the answer is written.
+
 Stage what the window should be *showing* from the shell; drive only the buttons. It is built once
 and kept, so a `defaults write` does not appear by reopening it — quit the app, write the key, and
 relaunch, and the window comes up on the state you wanted:

@@ -13,6 +13,8 @@ file does not repeat it.
   one rebuild and not another, and the three ways granting appears to fail when it has not.
 - [docs/testing.md](docs/testing.md) — driving the app with no human at the keyboard, and the
   environment failures that look like product bugs.
+- [docs/accessibility.md](docs/accessibility.md) — what a new control owes the tree and the
+  keyboard, and the AppKit defaults that leave one drawn correctly and reachable by nothing.
 
 Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
@@ -123,6 +125,11 @@ explained where it is implemented.
   point was what it said. A second tap of the hotkey cancels, since the tap sits ahead of the
   hotkey manager and sees the chord before Carbon does; the press that opened the session is the
   one already under the fingers.
+- **A control is named, reachable by Tab and legible at 4.5:1.** What the app draws is pictures — a
+  hint plate, a chord box, a swatch, a thumbnail — and a picture says nothing to a reader and
+  answers no key by itself, so each carries its own title, value and press and takes Space the way a
+  button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader gets
+  Escape and nothing else.
 - **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
   title bar inactive, and the screenshot would show that.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
