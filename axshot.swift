@@ -73,7 +73,9 @@
 // region itself rather than beside it, and it is then what Command-Shift-C copies. A paragraph the
 // layout broke across a dozen elements comes back out of the tree as a dozen lines, and pasting
 // that into prose is a re-flow by hand -- so the join happens where the original is still on screen
-// to check it against. It is a toggle, since what it draws covers the region it describes, and it
+// to check it against. While it is up Command-C copies it as well, without the Shift: the run on
+// screen is the thing being looked at, and the picture that chord would otherwise take is of the
+// region underneath it. It is a toggle, since what it draws covers the region it describes, and it
 // survives an arrow step, recomputing for whatever is held next: the question it asked was about
 // the text, not about that one region. A bare J is still Down; the region is held, so Shift is
 // free to mean something else. It is the letter J as the layout types it, not the key at J's
@@ -697,7 +699,7 @@ final class Session {
   /// and the shutter is not fired at all.
   var copying = false
   /// The held region's text with the line breaks joined out, once Shift-J has asked for it. Set
-  /// means the joined form is on screen and is what the copy key will hand over; it survives an
+  /// means the joined form is on screen and is what either copy chord will hand over; it survives an
   /// arrow step and is recomputed for whatever is held next, since the question Shift-J asked was
   /// about the text and not about that one region.
   var joined: String?
@@ -740,8 +742,10 @@ final class Session {
       }
       guard let region = held, keyCode == 8 else { return }  // c
       // Both ends go to the clipboard, which is why they are the same letter; Shift asks for the
-      // words rather than a picture of them.
-      if event.flags.contains(.maskShift) { copying = true } else { toClipboard = true }
+      // words rather than a picture of them. With a join on screen the bare chord asks for them
+      // too: the words are what is being looked at, and a picture would carry the region the join
+      // is drawn over rather than the run that was asked for.
+      if event.flags.contains(.maskShift) || joined != nil { copying = true } else { toClipboard = true }
       chosen = region
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
