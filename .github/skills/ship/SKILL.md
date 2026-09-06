@@ -60,6 +60,11 @@ and never commit anything from the save folder.
 Generate the message from the diff. This repo uses Conventional Commits — `feat:`, `fix:`, `docs:` —
 with a lower-case subject under about 60 characters, and a body that says why rather than what.
 
+A change that never reached a running app -- the user asked for the ship, or the test lock was held
+by another session for the whole of it -- says so in the body too, in a line of its own. It is the
+one thing a later reader cannot recover: the diff is in the commit and the compile is implied, but
+whether anybody looked at the thing is not written anywhere else.
+
 A change that touches the bundle identifier, the signing identity, or how permissions are asked for
 should say so plainly in the body: those are the ones that cost the user a re-grant, and the commit
 is where that gets noticed later.

@@ -116,8 +116,9 @@ release however many rounds it takes.
 **Do not release yet if the change is one the user sees or touches** — the overlay, the settings
 window, the menu, the hotkeys, focus, permission prompts. Releasing restores the app they had, so
 the moment the lock drops there is nothing of the change left to try. Keep it held, tell them this
-branch is live and what to look at, and wait for their answer; the `ship` skill will not ship a
-visible change without it. Stay `🔒 ` while waiting — the lock is held and the installed app is this
+branch is live and what to look at, and wait for their answer. That wait is this skill's own, not a
+gate on the next one: `ship` runs when the user says to ship, tested or not, and their word is the
+answer this step was waiting for. Stay `🔒 ` while waiting — the lock is held and the installed app is this
 branch's build, which is exactly what the prefix says.
 
 Iterate under the same lock until they are happy, then release.
