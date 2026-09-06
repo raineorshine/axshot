@@ -2164,7 +2164,7 @@ final class SettingsWindow: NSWindowController {
     // The stack is pinned to the top and the height is a constant, so the window does not shrink to
     // its content: a row added or removed here is a row's worth of height to adjust by hand, or the
     // window keeps a gap where the row was.
-    let window = NSWindow(
+    let window = SettingsPanel(
       contentRect: NSRect(x: 0, y: 0, width: 500, height: 398),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
@@ -2392,11 +2392,18 @@ final class SettingsWindow: NSWindowController {
   }
 }
 
-extension SettingsWindow {
-  /// Escape closes the window, the way a panel does. It arrives here only when nothing in front of
-  /// it wanted it: a recorder mid-chord takes its own Escape to abandon the recording, and stops.
-  override func cancelOperation(_ sender: Any?) {
-    window?.performClose(sender)
+/// Escape closes the window, the way a panel does. `cancelOperation` is the documented route and is
+/// never sent here: nothing in this window interprets key events, so the keystroke arrives as a
+/// plain `keyDown` that walks the responder chain to the window and stops. Taking it here is that
+/// same walk's last step, and it still runs behind whatever wanted the key first -- a recorder
+/// mid-chord takes its own Escape to abandon the recording and never calls super.
+final class SettingsPanel: NSWindow {
+  override func keyDown(with event: NSEvent) {
+    if event.keyCode == UInt16(kVK_Escape) {
+      performClose(nil)
+      return
+    }
+    super.keyDown(with: event)
   }
 }
 
