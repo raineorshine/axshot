@@ -191,6 +191,23 @@
 // window closes, so Cmd-W -- or Escape, which closes it the way a panel does -- leaves nothing but
 // the menu bar item behind and the app keeps running.
 //
+// What the app is to a screen reader, and to a keyboard with no mouse beside it. Settings is
+// ordinary controls except for the two that are pictures rather than controls -- the chord recorder
+// and the five plates -- and those carry their own name, value and press, take Space and Return the
+// way a button does, and in the plates' case walk under the arrows as the radio group they are, so
+// nothing in that window has to be pointed at. The shortcut list is drawn glyph by glyph rather
+// than laid out in controls, which would leave the one window whose whole purpose is to say what
+// the keys are saying nothing at all, so it hands the same list over as text as well. The letters
+// on a plate clear 4.5:1 against both ends of its gradient, which is what decides how dark the blue
+// is and why the pink's letter is black rather than white. The toast fades in place instead of
+// sliding when Reduce Motion is on, and says what it saved, the app never having taken focus and a
+// thumbnail being a picture.
+//
+// The overlay is the exception and stays one. It takes the keyboard whole for as long as it is up
+// -- that is what the tap is for -- so nothing else on the machine reads a key while a session is
+// running, a screen reader included. Escape is always the way out, and the session expires on its
+// own rather than being trusted to stop.
+//
 // There is one hotkey, Option-Command-4, because where a shot lands is decided at the end of a hold
 // rather than at the press. It is a Carbon RegisterEventHotKey rather than a tap or a global
 // monitor: the only one of the three that reserves the chord system-wide, so the frontmost app
@@ -634,6 +651,11 @@ enum HintStyle: String, CaseIterable {
   /// The fill, top to bottom. Every style is a gradient rather than a colour: a plate shaded the way
   /// the light falls reads as sitting on the window rather than as a hole cut in it, and the shading
   /// is what keeps an edge where the plate lands on something its own colour.
+  ///
+  /// Both stops clear 4.5:1 against the letter drawn on them, measured at the lighter of the two,
+  /// which for a white letter is the top: a plate is a 12pt label and nothing else, so the letters
+  /// are the one thing on it that has to be read at all. That floor is what holds the blue down
+  /// where it is rather than at the lighter blue it would otherwise be (4.7:1, from 2.9:1).
   private var gradient: (top: NSColor, bottom: NSColor) {
     switch self {
     case .grey:
@@ -644,7 +666,7 @@ enum HintStyle: String, CaseIterable {
       return (NSColor(calibratedRed: 1.0, green: 0.90, blue: 0.45, alpha: 0.96),
               NSColor(calibratedRed: 1.0, green: 0.80, blue: 0.25, alpha: 0.96))
     case .blue:
-      return (NSColor(calibratedRed: 0.32, green: 0.60, blue: 1.0, alpha: 0.96),
+      return (NSColor(calibratedRed: 0.18, green: 0.42, blue: 0.95, alpha: 0.96),
               NSColor(calibratedRed: 0.10, green: 0.38, blue: 0.90, alpha: 0.96))
     case .pink:
       return (NSColor(calibratedRed: 1.0, green: 0.47, blue: 0.74, alpha: 0.96),
@@ -664,11 +686,15 @@ enum HintStyle: String, CaseIterable {
     }
   }
 
+  /// Dark or light, whichever clears 4.5:1 against the gradient underneath. The pink is the one
+  /// that surprises: it is as saturated as the blue and reads as a strong colour, but it is a far
+  /// brighter one, and a white letter on it came to 2.4:1 -- so it takes the dark letter its own
+  /// brightness asks for rather than the white its loudness suggests.
   private var letter: NSColor {
     switch self {
     case .grey: return NSColor(calibratedWhite: 0.1, alpha: 1)
-    case .yellow: return .black
-    case .dark, .blue, .pink: return .white
+    case .yellow, .pink: return .black
+    case .dark, .blue: return .white
     }
   }
 
@@ -921,6 +947,17 @@ enum HelpSheet {
       line.append(run(part, keyFont, 1))
     }
     return line
+  }
+
+  /// The same list as one run of text. The sheet is drawn glyph by glyph into a rect, so without
+  /// this the one window whose whole purpose is to say what the keys are says nothing at all to
+  /// anything reading the tree. The key column goes through as it is drawn rather than spelled out
+  /// into words: the glyphs are what is printed on the keys, and a second table naming them is a
+  /// second place for the list to be wrong.
+  static func text(hotkey: String?) -> String {
+    sections(hotkey: hotkey).map { heading, rows in
+      ([heading] + rows.map { "\($0.0): \($0.1)" }).joined(separator: "\n")
+    }.joined(separator: "\n\n")
   }
 
   /// The width of the widest row and the height of every row stacked: the sheet is as big as its
@@ -1536,6 +1573,9 @@ func transcribeImage(_ png: Data, completion: @escaping (String?, String?) -> Vo
 final class ToastView: NSView {
   var image: NSImage?
   var onClick: (() -> Void)?
+  /// What the shot was called. The thumbnail is a picture of the file, and the name is the only
+  /// part of it that can be read out.
+  var name = ""
   /// The mat the thumbnail is framed in. Black rather than the white macOS uses: the shots are of
   /// one region of a window rather than a whole desktop, and a light one needs an edge that a white
   /// frame does not give it.
@@ -1558,6 +1598,15 @@ final class ToastView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
+
+  // A picture with a click behind it and no text anywhere near it, so it is named here or it is an
+  // unnamed window that appears for four seconds and goes away again.
+  override func isAccessibilityElement() -> Bool { true }
+  override func accessibilityRole() -> NSAccessibility.Role? { .button }
+  override func accessibilityLabel() -> String? { "Screenshot saved" }
+  override func accessibilityValue() -> Any? { name }
+  override func accessibilityHelp() -> String? { "Open the file that was just captured." }
+  override func accessibilityPerformPress() -> Bool { onClick?(); return true }
 }
 
 final class Toast {
@@ -1598,6 +1647,7 @@ final class Toast {
 
     let view = ToastView(frame: CGRect(origin: .zero, size: size))
     view.image = image
+    view.name = (path as NSString).lastPathComponent
     view.onClick = { [weak self] in
       NSWorkspace.shared.open(URL(fileURLWithPath: path))
       self?.close()
@@ -1611,15 +1661,18 @@ final class Toast {
   }
 
   /// Off the right edge rather than a fade in place: the corner is emptied by something leaving it,
-  /// which reads at the edge of vision in a way a dimming rectangle does not.
+  /// which reads at the edge of vision in a way a dimming rectangle does not. Unless motion has been
+  /// asked to stop, and then the dimming rectangle is exactly what is wanted -- this is the one
+  /// animation the app has, and travel across the corner of the eye is what the setting is about.
   private func slideOff() {
+    let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
     var frame = panel.frame
     frame.origin.x = screen.frame.maxX + 1
     NSAnimationContext.runAnimationGroup { context in
-      context.duration = 0.35
+      context.duration = still ? 0.2 : 0.35
       context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-      panel.animator().setFrame(frame, display: true)
+      if !still { panel.animator().setFrame(frame, display: true) }
       panel.animator().alphaValue = 0
     } completionHandler: { [weak self] in
       self?.close()
@@ -1637,6 +1690,11 @@ final class Toast {
   static func show(_ image: NSImage, open path: String) {
     dismiss()
     current = Toast(image, open: path)
+    // The app never takes focus, the overlay is already down, and the thumbnail is a picture: with
+    // nothing said, the shutter firing has no sign at all for anyone not watching that corner.
+    NSAccessibility.post(
+      element: NSApp as Any, notification: .announcementRequested,
+      userInfo: [.announcement: "Screenshot saved to \((path as NSString).lastPathComponent)"])
   }
 
   static func dismiss() {
@@ -2123,12 +2181,28 @@ enum Permissions {
 
 // MARK: - Settings window
 
-/// Click it, press a chord, it takes it. A chord with no modifier is refused: a bare key as a global
-/// hotkey would swallow that key everywhere.
+/// Name a control something other than the words drawn on it. Title and label both, the way the
+/// swatches carry both: which of the two a reader takes as the name is the reader's business, and a
+/// button whose title still says `Grant…` is named for neither of the two rows it could be in.
+extension NSControl {
+  func setAccessibilityName(_ name: String) {
+    setAccessibilityTitle(name)
+    setAccessibilityLabel(name)
+  }
+}
+
+/// Click it, press a chord, it takes it -- or Tab to it and press Space, since the one control here
+/// with no ordinary control behind it would otherwise be the one a keyboard could not reach. A chord
+/// with no modifier is refused, and the box says so: a bare key as a global hotkey would swallow
+/// that key everywhere.
 final class RecorderView: NSView {
-  var chord: Chord { didSet { needsDisplay = true } }
+  var chord: Chord { didSet { needsDisplay = true; announce() } }
   var onChange: ((Chord) -> Void)?
-  private var recording = false
+  private var recording = false { didSet { needsDisplay = true; announce() } }
+  /// Set when a bare key arrived at a recording. The refusal was a beep and nothing else, which
+  /// with the sound down is no answer at all, so the box says what is missing until a chord
+  /// arrives.
+  private var refused = false { didSet { needsDisplay = true; announce() } }
 
   init(chord: Chord) {
     self.chord = chord
@@ -2140,17 +2214,49 @@ final class RecorderView: NSView {
 
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
-  override func mouseDown(with event: NSEvent) {
+  /// Everything this view says is its accessibility value, so anything that changes what the box
+  /// reads is the same one notification.
+  private func announce() { NSAccessibility.post(element: self, notification: .valueChanged) }
+
+  override func mouseDown(with event: NSEvent) { record() }
+
+  /// Wait for the next chord. Reached by a click, by Space or Return once Tab has arrived here, and
+  /// by a screen reader's press: the hotkey is the only setting in this window with no ordinary
+  /// control behind it, and it would otherwise be the only one a mouse alone could change.
+  private func record() {
+    refused = false
     recording = true
     window?.makeFirstResponder(self)
-    needsDisplay = true
+  }
+
+  /// What the box says, which is also what it reports as its value: one string, so the two cannot
+  /// come to disagree.
+  private var caption: String {
+    guard recording else { return chord.display }
+    return refused ? "Add a modifier" : "Press a chord…"
   }
 
   override func resignFirstResponder() -> Bool {
     recording = false
-    needsDisplay = true
     return true
   }
+
+  // The standard ring, drawn by AppKit wherever the mask is: a view that Tab can land on has to
+  // show that it has been landed on, and this one has no control underneath to do it.
+  override func drawFocusRingMask() {
+    NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6).fill()
+  }
+  override var focusRingMaskBounds: NSRect { bounds }
+
+  override func isAccessibilityElement() -> Bool { true }
+  override func accessibilityRole() -> NSAccessibility.Role? { .button }
+  // Title as well as label, for the same reason the swatches carry both: a script addresses a
+  // control by title, and a label alone leaves the name reading `missing value`.
+  override func accessibilityTitle() -> String? { "Capture region shortcut" }
+  override func accessibilityLabel() -> String? { "Capture region shortcut" }
+  override func accessibilityValue() -> Any? { caption }
+  override func accessibilityHelp() -> String? { "Press, then hold the modifiers and key to use as the capture hotkey." }
+  override func accessibilityPerformPress() -> Bool { record(); return true }
 
   // A chord that is also a menu shortcut would be eaten before keyDown without this.
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -2160,14 +2266,21 @@ final class RecorderView: NSView {
   }
 
   override func keyDown(with event: NSEvent) {
-    guard recording else { return super.keyDown(with: event) }
+    guard recording else {
+      // The two keys that press any other control press this one. Not routed through
+      // `performKeyEquivalent`, which only runs while recording and is there for the opposite
+      // case -- a chord the menu bar would otherwise eat.
+      if event.keyCode == UInt16(kVK_Space) || event.keyCode == UInt16(kVK_Return) { record(); return }
+      return super.keyDown(with: event)
+    }
     if event.keyCode == UInt16(kVK_Escape) {
       recording = false
       window?.makeFirstResponder(nil)
       return
     }
     let modifiers = carbonModifiers(event.modifierFlags)
-    guard modifiers != 0 else { NSSound.beep(); return }
+    guard modifiers != 0 else { refused = true; NSSound.beep(); return }
+    refused = false
     recording = false
     chord = Chord(keyCode: UInt32(event.keyCode), modifiers: modifiers)
     window?.makeFirstResponder(nil)
@@ -2182,9 +2295,11 @@ final class RecorderView: NSView {
     box.lineWidth = recording ? 2 : 1
     box.stroke()
 
-    let text = NSAttributedString(string: recording ? "Press a chord…" : chord.display, attributes: [
+    let text = NSAttributedString(string: caption, attributes: [
       .font: NSFont.systemFont(ofSize: 14, weight: .medium),
-      .foregroundColor: recording ? NSColor.secondaryLabelColor : NSColor.labelColor,
+      // The prompt is set back the way a placeholder is; the refusal is not a placeholder, it is
+      // the one thing in the box that has to be read.
+      .foregroundColor: recording && !refused ? NSColor.secondaryLabelColor : NSColor.labelColor,
     ])
     let size = text.size()
     text.draw(at: CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
@@ -2196,7 +2311,12 @@ final class RecorderView: NSView {
 /// picture, so the control is the picture, and the choice is made by pointing at the one you want.
 final class SwatchView: NSView {
   let style: HintStyle
-  var isSelected: Bool { didSet { needsDisplay = true } }
+  var isSelected: Bool {
+    didSet {
+      needsDisplay = true
+      NSAccessibility.post(element: self, notification: .valueChanged)
+    }
+  }
   var onSelect: ((HintStyle) -> Void)?
 
   /// The app's own initials, since the letters on a swatch stand for nothing -- a real hint label
@@ -2215,6 +2335,16 @@ final class SwatchView: NSView {
 
   override var isFlipped: Bool { false }
 
+  override var acceptsFirstResponder: Bool { true }
+
+  // The standard ring, drawn by AppKit off this mask. Round the whole swatch, outside the accent
+  // ring that marks the chosen one: focus and selection are two different things here, and a row
+  // walked by the arrows shows both at once on whichever swatch the walk has reached.
+  override func drawFocusRingMask() {
+    NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 9, yRadius: 9).fill()
+  }
+  override var focusRingMaskBounds: NSRect { bounds }
+
   /// A plate, and room for the ring that marks the chosen one. No name beside it: the plate is what
   /// the setting is, and a word next to a picture of the thing it names is the picture repeated
   /// worse. The name is still on the swatch for anything that cannot see it -- the tooltip, and the
@@ -2224,6 +2354,28 @@ final class SwatchView: NSView {
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
   override func mouseDown(with event: NSEvent) { onSelect?(style) }
+
+  /// Space and Return choose the focused plate; Left and Right walk the row, moving the selection
+  /// with the focus the way a radio group does. The plates are the only setting here that is a
+  /// picture rather than a control, and a picture is the one thing a keyboard cannot point at.
+  override func keyDown(with event: NSEvent) {
+    switch Int(event.keyCode) {
+    case kVK_Space, kVK_Return: onSelect?(style)
+    case kVK_LeftArrow: step(by: -1)
+    case kVK_RightArrow: step(by: 1)
+    default: super.keyDown(with: event)
+    }
+  }
+
+  /// The swatches share a container that holds nothing else, which is what makes them addressable
+  /// as a row here and announceable as one group to a screen reader.
+  private func step(by offset: Int) {
+    let row = superview?.subviews.compactMap { $0 as? SwatchView } ?? []
+    guard let index = row.firstIndex(of: self), row.count > 1 else { return }
+    let next = row[(index + offset + row.count) % row.count]
+    next.onSelect?(next.style)
+    window?.makeFirstResponder(next)
+  }
 
   // Named and pressable through the accessibility tree, which is how a screen reader reaches a
   // plain NSView and how this window is driven with no one at the keyboard. Without these the
@@ -2235,6 +2387,7 @@ final class SwatchView: NSView {
   override func accessibilityTitle() -> String? { style.title }
   override func accessibilityLabel() -> String? { style.title }
   override func accessibilityValue() -> Any? { isSelected }
+  override func accessibilityHelp() -> String? { "Draw the hint plates in this style." }
   override func accessibilityPerformPress() -> Bool { onSelect?(style); return true }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -2302,6 +2455,11 @@ final class SettingsWindow: NSWindowController {
       contentRect: NSRect(x: 0, y: 0, width: 500, height: 0),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
+    // Off by default, and with it off `nextKeyView` is nil the whole way round: Tab lands on the
+    // first view that will take it and then has nowhere to go, which is every control in this
+    // window but one unreachable without a mouse. AppKit builds the loop in layout order once this
+    // is set, so it has to be set before the views go in.
+    window.autorecalculatesKeyViewLoop = true
     self.init(window: window)
     window.delegate = self
 
@@ -2326,13 +2484,23 @@ final class SettingsWindow: NSWindowController {
       swatch.onSelect = { [weak self] chosen in self?.chooseHintStyle(chosen) }
       return swatch
     }
-    let styleRow = NSStackView(views: [styleCaption] + swatches)
-    styleRow.orientation = .horizontal
     // Flush, because they are one control rather than five: each swatch already carries the air its
-    // selection ring needs, and a gap on top of that reads as five separate settings. The caption
-    // keeps the spacing every other row's caption has.
-    styleRow.spacing = 0
-    styleRow.setCustomSpacing(12, after: styleCaption)
+    // selection ring needs, and a gap on top of that reads as five separate settings.
+    let swatchRow = NSStackView(views: swatches)
+    swatchRow.orientation = .horizontal
+    swatchRow.spacing = 0
+    // A container holding the swatches and nothing else, which is what lets it say what it is: five
+    // radio buttons loose in the row with the caption would be five unrelated settings to anything
+    // reading the tree, and the arrows that walk between them read this row too.
+    // An element in its own right, not just a role: a container that is not one is flattened away
+    // and its children handed up to the window, which is where the five plates were arriving as
+    // five unrelated settings.
+    swatchRow.setAccessibilityElement(true)
+    swatchRow.setAccessibilityRole(.radioGroup)
+    swatchRow.setAccessibilityLabel("Hint style")
+    let styleRow = NSStackView(views: [styleCaption, swatchRow])
+    styleRow.orientation = .horizontal
+    styleRow.spacing = 12
     styleCaption.widthAnchor.constraint(equalToConstant: 150).isActive = true
 
     let themeCaption = NSTextField(labelWithString: "Theme")
@@ -2363,7 +2531,10 @@ final class SettingsWindow: NSWindowController {
     folder.textColor = .secondaryLabelColor
     // Truncate the head: the tail of a path is the part that identifies it.
     folder.lineBreakMode = .byTruncatingHead
+    // The path is this field's whole content, so without a name it is a value read out of nowhere.
+    folder.setAccessibilityLabel("Save to")
     let choose = PointerButton(title: "Choose…", target: self, action: #selector(chooseFolder))
+    choose.setAccessibilityName("Choose save folder")
     let folderCaption = NSTextField(labelWithString: "Save to")
     folderCaption.font = .systemFont(ofSize: 13)
     // Always on screen, and dimmed while there is nothing to undo: a control that appears only
@@ -2371,6 +2542,7 @@ final class SettingsWindow: NSWindowController {
     resetFolder.target = self
     resetFolder.action = #selector(followSystemFolder)
     resetFolder.toolTip = "Go back to the macOS screenshot folder."
+    resetFolder.setAccessibilityName("Reset save folder")
     let folderRow = NSStackView(views: [folderCaption, folder, choose, resetFolder])
     folderRow.orientation = .horizontal
     folderRow.spacing = 12
@@ -2382,7 +2554,10 @@ final class SettingsWindow: NSWindowController {
     ])
 
     status.font = .systemFont(ofSize: 11)
-    status.textColor = .secondaryLabelColor
+    status.setAccessibilityLabel("Status")
+    // Full strength, unlike every other small line here: this one is empty until something has gone
+    // wrong, and an error set in the colour of an aside is one at 4:1 that reads as decoration.
+    status.textColor = .labelColor
     status.lineBreakMode = .byWordWrapping
     status.maximumNumberOfLines = 2
     // Hidden while it has nothing to say, which the stack collapses rather than leaves as a blank
@@ -2396,14 +2571,20 @@ final class SettingsWindow: NSWindowController {
     var permissionViews: [NSView] = [separator()]
     let spaces = NSTextField(labelWithString: "If no dialog appears, check your other Spaces — macOS opens it wherever it likes.")
     spaces.font = .systemFont(ofSize: 11)
-    spaces.textColor = .tertiaryLabelColor
+    // Secondary rather than tertiary. Tertiary is the colour of something switched off, and at 11pt
+    // it comes to 1.9:1 on a white window -- which is fine for a placeholder and not for the line
+    // that says where the dialog went. Still the quietest thing in the window, and now readable.
+    spaces.textColor = .secondaryLabelColor
     for permission in [Permissions.accessibility, .screenRecording] {
       let caption = NSTextField(labelWithString: permission.title)
       caption.font = .systemFont(ofSize: 13)
       let state = NSTextField(labelWithString: "")
       state.font = .systemFont(ofSize: 11)
+      state.setAccessibilityLabel(permission.title)
       let button = PointerButton(title: "Grant…", target: self, action: #selector(grant(_:)))
       button.tag = permission == .accessibility ? 0 : 1
+      // Both rows have a button reading the same word, so the title alone names neither of them.
+      button.setAccessibilityName("Grant \(permission.title)")
 
       let row = NSStackView(views: [caption, state, button])
       row.orientation = .horizontal
@@ -2418,6 +2599,7 @@ final class SettingsWindow: NSWindowController {
 
     let relaunch = PointerButton(title: "Relaunch", target: self, action: #selector(relaunchApp))
     relaunch.toolTip = "Accessibility only takes effect after a restart."
+    relaunch.setAccessibilityName("Relaunch Axshot")
     let relaunchRow = NSStackView(views: [NSTextField(labelWithString: "After granting Accessibility"), relaunch])
     relaunchRow.orientation = .horizontal
     relaunchRow.spacing = 12
@@ -2492,11 +2674,21 @@ final class SettingsWindow: NSWindowController {
       : NSColor(calibratedRed: 0.20, green: 0.45, blue: 0.26, alpha: 1)
   }
 
+  // `.systemOrange` had the opposite problem and the same cause: a fill colour read as 11pt text,
+  // which on a white window is 2.3:1 -- unreadable on the one row that is asking to be acted on.
+  // Picked per appearance like the green, and left louder than it, since this is the alert the
+  // green is not: rust against white, apricot against black -- 5.2:1 and 10.7:1.
+  private static let notGrantedColor = NSColor(name: "notGranted") { appearance in
+    appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      ? NSColor(calibratedRed: 1.0, green: 0.72, blue: 0.42, alpha: 1)
+      : NSColor(calibratedRed: 0.60, green: 0.26, blue: 0.0, alpha: 1)
+  }
+
   private func refreshPermissions() {
     for (permission, state, button) in permissionRows {
       let granted = permission.granted
       state.stringValue = granted ? "Granted" : "Not granted"
-      state.textColor = granted ? Self.grantedColor : .systemOrange
+      state.textColor = granted ? Self.grantedColor : Self.notGrantedColor
       button.isHidden = granted
       button.toolTip = permission.explanation
       if granted { askedAt[button.tag] = nil }
@@ -2538,10 +2730,16 @@ final class SettingsWindow: NSWindowController {
   }
 
   /// The one way the status line is written, so it is never left showing an empty row of its own.
+  /// Said as well as written: macOS has no live region, so a chord another app already owns is
+  /// refused silently to anything that is not looking at this line.
   private func say(_ message: String) {
     status.stringValue = message
     status.isHidden = message.isEmpty
     fit()
+    guard !message.isEmpty else { return }
+    NSAccessibility.post(
+      element: NSApp as Any, notification: .announcementRequested,
+      userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
   }
 
   private func refreshFolder() {
@@ -2638,6 +2836,9 @@ final class HelpWindow: NSWindowController, NSWindowDelegate {
     // Above ordinary windows, and nowhere near the overlay's screen-saver level: this one is read
     // while nothing else of the app's is on screen.
     window.level = .floating
+    // Borderless, so it is never drawn -- but it is the window's name in the tree, and this window
+    // has no other.
+    window.title = "Keyboard Shortcuts"
     window.contentView = HelpSheetView()
     self.init(window: window)
     window.delegate = self
@@ -2660,6 +2861,13 @@ final class HelpPanel: NSWindow {
 /// so any click at all is a dismissal rather than a hit test.
 final class HelpSheetView: NSView {
   override var acceptsFirstResponder: Bool { true }
+
+  // One element holding the whole list, rather than a row apiece: it is a legend read straight
+  // through, and the rows are not controls to be stopped on one at a time.
+  override func isAccessibilityElement() -> Bool { true }
+  override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+  override func accessibilityLabel() -> String? { "Keyboard Shortcuts" }
+  override func accessibilityValue() -> Any? { HelpSheet.text(hotkey: Settings.chord.display) }
 
   override func draw(_ dirtyRect: NSRect) {
     NSColor.clear.set()
@@ -2697,6 +2905,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Axshot")
+    // The image's description names it, but the title is what a name is looked up by, and an
+    // image-only button leaves that empty: the item reads `missing value` to a script and has to be
+    // found by position instead.
+    statusItem.button?.setAccessibilityName("Axshot")
 
     let menu = NSMenu()
     let capture = NSMenuItem(title: HotKey.title, action: #selector(captureFromMenu), keyEquivalent: "")

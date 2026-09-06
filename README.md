@@ -95,6 +95,14 @@ plates are chosen for the window underneath them, these windows for the desktop 
 axshot draws over other apps — the overlay, the key sheet, the capture thumbnail — keeps its own
 colours either way.
 
+Settings needs no mouse: Tab moves between the rows, Space or Return presses, and the plates walk
+under Left and Right as the radio group they are. The letters on every plate clear 4.5:1 against
+both ends of its gradient, the chord recorder and the plates are named and pressable through the
+accessibility tree, and the shortcut list hands itself over as text as well as glyphs. The corner
+thumbnail fades in place rather than sliding when Reduce Motion is on. The overlay is the one part
+that is not: it holds the whole keyboard while it is up, so `Escape` is the only key anything else
+can get, and the session expires on its own.
+
 Resident, but only as a listener. An idle hotkey costs nothing and the tree is still walked on
 demand; nothing is cached between captures. See "Measured" for why.
 
