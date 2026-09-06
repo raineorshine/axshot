@@ -2267,6 +2267,8 @@ final class SettingsWindow: NSWindowController {
   private let folder = NSTextField(labelWithString: "")
   private let resetFolder = PointerButton(title: "Reset", target: nil, action: nil)
   private let status = NSTextField(labelWithString: "")
+  /// The rows, kept only to be measured: the window is as tall as they are.
+  private var rows: NSStackView!
   private var swatches: [SwatchView] = []
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
   private var permissionTimer: Timer?
@@ -2276,11 +2278,12 @@ final class SettingsWindow: NSWindowController {
   var onChordChange: (() -> Void)?
 
   convenience init() {
-    // The stack is pinned to the top and the height is a constant, so the window does not shrink to
-    // its content: a row added or removed here is a row's worth of height to adjust by hand, or the
-    // window keeps a gap where the row was.
+    // No height here, because there is no longer one to know. `fit()` measures the stack and sets the
+    // real one, so a row added or removed is no longer a constant to re-tune by hand -- and the
+    // window keeps neither a gap where a row was nor a margin reserved for a message it is not
+    // showing. The width is the one real number: 456 of content inside 22pt insets.
     let window = SettingsPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 500, height: 438),
+      contentRect: NSRect(x: 0, y: 0, width: 500, height: 0),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Axshot"
     self.init(window: window)
@@ -2366,6 +2369,10 @@ final class SettingsWindow: NSWindowController {
     status.textColor = .secondaryLabelColor
     status.lineBreakMode = .byWordWrapping
     status.maximumNumberOfLines = 2
+    // Hidden while it has nothing to say, which the stack collapses rather than leaves as a blank
+    // line -- and since the window is its content's height, an empty status is not a gap at the
+    // bottom of the window either. A message unhides it and the window grows by the line.
+    status.isHidden = true
 
     let launch = PointerButton(checkboxWithTitle: "Launch at login", target: self, action: #selector(toggleLaunch(_:)))
     launch.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -2409,6 +2416,7 @@ final class SettingsWindow: NSWindowController {
 
     // The stack goes inside the content view rather than being it: constraining a view to its own
     // anchors is what an NSWindowController does just before it fails to show anything.
+    rows = stack
     let container = NSView()
     container.addSubview(stack)
     window.contentView = container
@@ -2416,12 +2424,27 @@ final class SettingsWindow: NSWindowController {
       stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
       stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
       stack.topAnchor.constraint(equalTo: container.topAnchor),
-      stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
+      stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
       status.widthAnchor.constraint(equalToConstant: 456),
     ])
+    fit()
     window.center()
     refreshFolder()
     refreshPermissions()
+  }
+
+  /// The window at the height of its rows. Called again whenever the status line appears or goes,
+  /// which is the one thing here that changes height while the window is open. The top edge is held
+  /// rather than the bottom: `setContentSize` would grow the window upwards, and a title bar that
+  /// jumps is a worse answer to an error message than the message itself.
+  private func fit() {
+    guard let window else { return }
+    let content = NSRect(x: 0, y: 0, width: 500, height: rows.fittingSize.height)
+    var frame = window.frame
+    let height = window.frameRect(forContentRect: content).height
+    frame.origin.y += frame.height - height
+    frame.size.height = height
+    window.setFrame(frame, display: true)
   }
 
   private func separator() -> NSView {
@@ -2494,9 +2517,15 @@ final class SettingsWindow: NSWindowController {
   private func apply(_ chord: Chord) {
     Settings.setChord(chord)
     // Another app may already own the chord; Carbon simply refuses to register it.
-    status.stringValue = HotKey.shared.register(chord)
-      ? "" : "\(chord.display) is already taken by another app."
+    say(HotKey.shared.register(chord) ? "" : "\(chord.display) is already taken by another app.")
     onChordChange?()
+  }
+
+  /// The one way the status line is written, so it is never left showing an empty row of its own.
+  private func say(_ message: String) {
+    status.stringValue = message
+    status.isHidden = message.isEmpty
+    fit()
   }
 
   private func refreshFolder() {
@@ -2548,7 +2577,7 @@ final class SettingsWindow: NSWindowController {
       else { try SMAppService.mainApp.unregister() }
     } catch {
       sender.state = sender.state == .on ? .off : .on
-      status.stringValue = "Could not change the login item: \(error.localizedDescription)"
+      say("Could not change the login item: \(error.localizedDescription)")
     }
   }
 }
