@@ -141,6 +141,15 @@ explained where it is implemented.
   point was what it said. A second tap of the hotkey cancels, since the tap sits ahead of the
   hotkey manager and sees the chord before Carbon does; the press that opened the session is the
   one already under the fingers.
+- **The text box is a field from the frame it is drawn in.** What `⇧J` and `⇧T` put on screen is on
+  its way to the clipboard and is usually nearly right, so the caret is already in it — at the
+  start, because the run is read against the region under it before it is typed in. The cost is that
+  every other overlay key goes quiet while it is there: a bare letter types, so the arrows stop
+  stepping regions and `⇧J` stops toggling. Escape is the single way out and also abandons the edit,
+  since everything you would do after closing the box either discards what was typed or works with
+  it open; `Return` is the exception and stays the shutter. Standard editing behaviour is spelled
+  out by hand because it cannot be borrowed: AppKit's key bindings reach a view through the
+  responder chain, and a window in one has the keyboard, which is the focus this app must not take.
 - **A control is named, reachable by Tab and legible at 4.5:1.** What the app draws is pictures — a
   hint plate, a chord box, a swatch, a thumbnail — and a picture says nothing to a reader and
   answers no key by itself, so each carries its own title, value and press and takes Space the way a

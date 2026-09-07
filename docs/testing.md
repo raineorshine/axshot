@@ -132,6 +132,15 @@ hint never completes, nothing is ever held, and the session ends `cancelled=true
 which reads as a keystroke that never arrived rather than one that arrived and was ignored. A list
 view that refreshes itself is the worst case; a settings window is the easy one.
 
+Better still, write the assertion so the region does not matter. A driven run that lands on a
+different region than intended still produces an outcome line and a clipboard, and both look like a
+pass — a copy that reports `copy=selection` says the box was open and a run was picked out, not that
+either was the one you aimed at. An assertion phrased against the text itself survives that: two
+`⌥⇧→` from a freshly opened box select the first two words of *whatever* it holds, and a caret
+placed mid-run and extended to the end copies a proper suffix of what the same region joins to. Both
+are checkable without knowing which region answered, which is the only kind of check that does not
+quietly re-verify itself against the wrong window.
+
 A hotkey press that does not land is silent: no overlay appears and the session never starts. Look
 for the overlay before sending hints rather than assuming the chord arrived, and send it again if it
 did not. A capture that lands is not proof of the press that started it either — a chord swallowed
