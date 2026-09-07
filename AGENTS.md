@@ -34,6 +34,7 @@ would look at is not on their machine until `test` has put it there.
 | `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot`, installs it; `--no-install` stops before the install |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
 | `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
+| `scripts/wait-idle.sh` | blocks until the user has stopped typing, in front of anything that takes the foreground |
 
 The same binary is the app when launched with no arguments and a CLI when given any — the same
 bytes, but not the same process identity. `bin/axshot` is a symlink into the bundle and dyld reports
@@ -52,11 +53,22 @@ from there through the lock, which refuses while another session is driving the 
 ## Driving the app on a live machine
 
 The user is at the keyboard doing their own work while a test runs, and every drive of the real app
-brings some window to the front. Hold the foreground for a second, not for a stretch: activate,
-send the hint, send Return, and let go. Everything that is not the keystrokes — reading `--dump`
-output, checking the PNG, deciding what the labels mean — happens before the sequence starts or
-after the capture lands, never in the middle of it with a window parked in front of whatever the
-user was typing into. What a run has to undo before it ends is the last section of
+brings some window to the front. **Wait for them to stop before you start.**
+`scripts/wait-idle.sh` blocks until nobody has typed for three seconds, and goes in front of every
+activation, every overlay and every posted keystroke: a burst begun mid-sentence takes the letter
+they were in the middle of and lands the rest of the hint in their editor. It gives up rather than
+waiting forever — someone still typing after two minutes is working, and the answer to that is to
+park and let them name the moment, not to take the foreground anyway.
+
+It gates the *start* of a burst and not the keys inside one, because no clock on the machine
+separates a person's keypress from one this session posted;
+[docs/testing.md](docs/testing.md#waiting-for-the-keyboard) is the measurement and its edges.
+
+Then hold the foreground for a second, not for a stretch: activate, send the hint, send Return, and
+let go. Everything that is not the keystrokes — reading `--dump` output, checking the PNG, deciding
+what the labels mean — happens before the sequence starts or after the capture lands, never in the
+middle of it with a window parked in front of whatever the user was typing into. What a run has to
+undo before it ends is the last section of
 [docs/testing.md](docs/testing.md#leaving-the-machine-as-you-found-it).
 
 ## Session titles

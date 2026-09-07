@@ -36,6 +36,35 @@ installed app; this is the mechanics it calls for.
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.
 
+## Waiting for the keyboard
+
+The user is typing while this runs, so every activation, every overlay and every posted key goes
+behind the gate:
+
+    ./scripts/wait-idle.sh          # returns once nobody has typed for three seconds
+
+It returns silently when the keyboard was already quiet and says so when it had to wait. Exit 1 is
+"still typing after two minutes": the user is working, which is a result to report and park on, not
+a wait to lengthen. Exit 2 is "could not tell", which is never a licence to proceed as though it had
+passed.
+
+What it reads is `CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)` —
+seconds since the last hardware keypress. The other three ways to ask are all wrong for this, and
+each is wrong quietly:
+
+| | |
+|---|---|
+| `.hidSystemState` with `.keyDown` | what the gate uses: real typing, plus keys posted to `.cghidEventTap` |
+| `.combinedSessionState` | counts keys posted to the *session* tap as well — osascript's among them — so a test driving the app spends its time resetting its own gate |
+| any-input instead of `.keyDown` | ambient cursor movement resets it faster than any threshold clears, and the gate never opens |
+| `ioreg -c IOHIDSystem`'s `HIDIdleTime` | any input again — and it prints nothing at all without `-d1 -r`, so the one-liner that reads it looks like a machine that has never been touched |
+
+The distinction no source makes is between a person's keypress and one this session posted to
+`.cghidEventTap` — the route "Driving the overlay" reaches for to hold a chord: both move the hid
+clock by exactly the same amount. So the gate belongs at the *start* of a burst and not between the
+keys inside one — run straight after your own drive it spends the whole threshold waiting on its own
+echo, and nothing it can read would tell it the typist was itself.
+
 ## Driving the overlay
 
 The hint overlay reads keys through a `CGEventTap`, which sees posted events, so AppleScript can

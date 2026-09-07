@@ -98,6 +98,17 @@ panel — and not a run of near-identical boxes at increasing depth, which is th
 failing, and not an empty list on a window with obvious content, which is the tree never being
 exposed.
 
+Everything past this point takes the user's keyboard, so everything past this point starts behind
+the gate — immediately before each burst, not once for the test:
+
+```bash
+./scripts/wait-idle.sh
+```
+
+It returns as soon as nobody has typed for three seconds. Non-zero means they are still working: do
+not retry past it and do not take the foreground anyway — park (`🚙 `), say the keyboard is busy, and
+let them name the moment.
+
 Then drive a real capture through the hotkey, not just the CLI, and confirm three things: a file
 appeared with the timestamped name; its pixel dimensions are twice the reported rect on a Retina
 display; and **the overlay is not in the image**. That last one is the regression that would
@@ -152,6 +163,11 @@ Release first, then follow the `ship` skill.
 - **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
   seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
   not start one and walk away.
+- **The keyboard is the user's too.** They are typing in another app while this runs, and a burst
+  begun mid-sentence steals the letter they were on and lands the rest in their editor. Nothing here
+  activates an app, opens the overlay or posts a key without `./scripts/wait-idle.sh` returning
+  first. It gates the start of a burst, not the keys within one — the reason is in
+  [docs/testing.md](../../../docs/testing.md#waiting-for-the-keyboard).
 - **The clipboard is the user's too.** Anything that drives a clipboard path overwrites whatever
   they were carrying, and it is not restored by releasing the lock. Save it with `pbpaste` before
   the first run and put it back after the last one.
