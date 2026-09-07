@@ -30,6 +30,9 @@ back at the hotkey, and two keys that put the region's words on screen first:
 | `⌘⇧C` | put the region's **text** on the clipboard, and take no picture |
 | `⇧J` | show that text joined into one run of prose, which either copy chord then copies |
 | `⇧T` | transcribe the region's *picture* instead, for when the tree has no text |
+| `⇧E` | put the caret back in that text after `Escape` |
+| `⇧←` `⇧→` `⌘A` | select part of it, which is then all either copy chord takes |
+| click, drag | place the caret or select with the mouse |
 
 `⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into
 one run of prose — the line breaks the layout put in taken back out — and draws it over the region,
@@ -57,6 +60,34 @@ region's picture, and re-reading the next one is another call nobody asked for.
 While the request is out the overlay says `Transcribing…` and the keyboard stays swallowed; `Escape`
 cancels. A region costs roughly half a cent on `claude-opus-5` — about 1200 input tokens for a
 typical box.
+
+The box is a text field, and the caret is in it from the moment it appears. What either key puts
+there is usually nearly right and not quite — a heading and a timestamp the tree put either side of
+the sentence worth keeping, a word a transcription read off a blurry glyph — so you correct it where
+the original is still on screen beside it, rather than after pasting it somewhere.
+
+It behaves the way a field behaves. Characters insert, `Delete` takes off the character before the
+caret, and the arrows carry their usual modifiers: `⌥←` `⌥→` (or `⌃`) move a word, `⌘←`
+`⌘→` move to the ends of the drawn line, `⌘↑` `⌘↓` to the ends of the whole run, and
+`⇧` with any of them selects rather than moves. `⌥⌫` and `⌘⌫` delete exactly what the
+matching arrow would have moved over. `⌘A` selects everything. Click to place the caret, drag to
+select, double-click for the run between the spaces either side, triple-click for all of it.
+
+`⌘C` and `⌘⇧C` copy the selection and not the box around it, which is usually the correction:
+not that the words are wrong, but that only part of them was wanted. Typing or `Delete` over a
+selection replaces it.
+
+The price is that nothing else on the overlay reads the keyboard while the caret is in the box: a
+bare letter types, so the arrows no longer step regions and `⇧J` no longer toggles. `Escape` is
+the way out, and it is the same key that abandons the edit — one thing, not two, since everything
+you would do after closing the box either discards what you typed anyway or works fine with it open.
+The box stays drawn and unfocused; `⇧E` puts the caret back, and a second `Escape` cancels the
+session. `Return` is the exception and stays the shutter throughout.
+
+While a box is up the overlay takes every click, so one that misses the box does nothing rather than
+landing in the window the mask is hiding; with no box up, clicks go through as they always have. What
+you typed does not survive an arrow step, for the reason a transcription does not: it is about the
+region it was typed over.
 
 The key is read from `CLAUDE_API_KEY`: the environment first, then `~/.config/axshot/.env`, then a
 `.env` in the working directory. Only the first two reach the menu bar app — launched from

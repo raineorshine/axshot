@@ -124,6 +124,68 @@
 // fixed absolute path is the one the app can use -- launched from /Applications at login it has no
 // environment and no useful working directory, and would never find a .env in a checkout.
 //
+// Shift-E opens whichever of them is on screen to the keyboard. What the box holds is on its way to
+// the clipboard, and what it holds is frequently nearly right and not quite: a tree that put a
+// heading and a timestamp either side of the sentence worth keeping, a transcription that read one
+// word off a blurry glyph. The alternative is pasting it somewhere and correcting it there, which
+// is the re-flow by hand that Shift-J exists to avoid, and it is done away from the region rather
+// than over it. So the box grows a caret and a border, and the keys do what a one-line field does:
+// characters insert, Delete takes off the composed character before the caret, Left and Right walk
+// it, Up and Down go to the two ends. Return keeps what was typed and Escape puts back what the
+// region or the API said -- there is no undo on an overlay and nowhere to hang one, and an edit
+// that cannot be abandoned where it was made is an edit nobody starts. A second Escape then cancels
+// the session, the way it does under the shortcut sheet.
+//
+// The caret is in the box from the frame it is drawn in. A box that showed the words and ignored
+// the keyboard until a second key was found is a box that does not answer the first thing tried on
+// it, and what it is showing is a field. So Shift-J and Shift-T both land the caret at the start of
+// what they put there -- at the start and not at the end a field would pick, because this box is
+// read before it is typed in and the eye starts where the words do -- and Shift-E only exists to put
+// it back after an Escape.
+//
+// The price is that nothing else on the overlay reads the keyboard while it is in: a bare letter
+// types, so the arrows no longer step regions and Shift-J no longer toggles. Escape is the way out
+// and it is the same key that abandons the edit -- one thing, not two, since everything you would do
+// after closing the box either discards what was typed anyway or works with it open. Return is the
+// exception and stays the shutter: making the app's oldest key a second press to reach would be
+// paying for a commit nobody needs.
+//
+// A click does the same thing, and opens the box on its way: the mouse is what a person reaches for
+// when they can see a field, and Shift-E being the only way in was a field that did not answer the
+// first thing tried on it. Click to place the caret, drag to select, twice for the run between the
+// spaces either side, three times for the lot. The click arrives through the same tap the keys do
+// rather than through the window, which is what keeps it off the one thing the app must not do: the
+// overlay ignores the mouse, and a panel that accepted a click would activate the app and redraw the
+// target's title bar inactive. While a box is up the overlay answers every click, not only the ones
+// that land on it -- a click that missed by a few points would otherwise go to a window the mask is
+// hiding. With no box up nothing changes, and a click goes through as it always has.
+//
+// The arrows carry the modifiers they carry in every other field, because a box that looked like one
+// and moved a character at a time under Option would be a box that lied about what it was: Option or
+// Control moves a word, Command moves to the ends of the drawn line, and Shift with any of them
+// selects rather than moves -- as do Option-Delete and Command-Delete, which take out exactly what
+// the matching arrow would have moved over. None of that arrives for free. AppKit's key bindings
+// come through the responder chain and this box is never in one: a window that took the keyboard
+// would take the focus with it and photograph the target with its title bar greyed out. So the
+// bindings are spelled out, but over Foundation's own word boundaries and the layout manager's own
+// lines rather than over a character scan invented here.
+//
+// Shift and an arrow reach rather than move, and Command-A takes the lot, because the correction is
+// often that only part of the box was wanted: a paragraph the region wrapped in a heading and a
+// timestamp, a transcription that read a table and a caption. With a run picked out both copy chords
+// hand over that run and not the box around it -- the same two keys, still the same destination, and
+// the selection is what says how much of the answer was the answer. Deleting or typing over a
+// selection replaces it, the way it does anywhere else.
+//
+// It is the one of the three that is a mode rather than a toggle, because the letters it has to eat
+// are the letters the arrows are: a held region is steered by the keyboard right up until the words
+// under it are being retyped, and no reading of a bare H is both a step left and an aitch. So while
+// the box is open every key that is not a chord is a character -- `?` types a question mark instead
+// of drawing the shortcut list -- and only Command gets through, because the two chords that copy
+// are what the box was opened for and they read it as it stands. What is typed does not survive an
+// arrow step: a transcription is pinned to the picture it was read off, and an edit is pinned the
+// same way to words a different region never said.
+//
 // The arrows adjust the held region without going back to the hints, for when the one that was
 // lettered is nearly right: Left and Right step across the tree in document order -- to the next
 // sibling, cousin, uncle or nephew, skipping the held region's own ancestors and descendants, which
@@ -742,6 +804,23 @@ final class HintView: NSView {
   /// or why it failed. Drawn in the same box as the joined text, and deliberately not the same
   /// field: the copy key hands over what the region said, and never what axshot said about it.
   var notice: String?
+  /// Where the caret sits in `joined` while Shift-E has the box open for typing, as a UTF-16 offset
+  /// -- nil when it is closed, which is the only thing that says whether the next letter is a key
+  /// or a character. Never drawn over a notice: that field is the app talking, and there is nothing
+  /// in it to correct.
+  var caret: Int?
+  /// The end of the selection the caret is not on. Equal to the caret is no selection: one offset
+  /// says where the next character goes, two say what it replaces.
+  var anchor = 0
+
+  /// The selected run, clamped to the text it is being asked about. Empty is the plain insertion
+  /// point, and the two are drawn differently: a highlight behind the words, or a bar between them.
+  private func selected(length: Int) -> NSRange? {
+    guard let caret else { return nil }
+    let low = max(0, min(min(caret, anchor), length))
+    let high = max(0, min(max(caret, anchor), length))
+    return NSRange(location: low, length: high - low)
+  }
   /// Set across the shutter that Shift-T fires. The mask stays exactly where it is -- it is drawn
   /// even-odd and never covers the region -- while the two things that *are* drawn inside the region
   /// come off: the corner brackets, and the text box if one is up. Ordering the whole overlay out
@@ -753,6 +832,11 @@ final class HintView: NSView {
   /// The hotkey as settings spells it. It is one of the keys the list names -- a second tap cancels
   /// -- and it is not the same chord on every machine.
   var hotkey: String?
+  /// The one colour on the overlay that is neither black, white, nor the window underneath, and it
+  /// is behind selected words and nowhere else. There is no ring around the box: the caret is in it
+  /// from the moment it is drawn, so a border would mark a state the box is never in the other half
+  /// of -- decoration answering a question nobody has.
+  private static let selectionFill = NSColor(calibratedRed: 0.35, green: 0.62, blue: 1, alpha: 0.45)
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -796,58 +880,33 @@ final class HintView: NSView {
       corners.lineWidth = thickness
       corners.stroke()
 
-      if let joined = notice ?? joined {
-        // Over the region rather than beside it: the joined text is what the region says, and the
-        // region is the only box on screen guaranteed to be where the eye already is. Opaque,
-        // because text drawn over text is neither of them.
-        // Padding scaled to the region rather than a fixed 8: a link or a table row is one line
-        // tall, which is where a joined run is likeliest to be asked for and where a fixed margin
-        // leaves no room to draw it in.
-        let padding = min(8, max(2, min(selection.width, selection.height) / 8))
-        let inset = selection.insetBy(dx: padding, dy: padding)
-        if inset.width > 16 && inset.height > 8 {
-          NSColor(calibratedWhite: 0.08, alpha: 0.94).setFill()
-          NSBezierPath(roundedRect: selection.insetBy(dx: padding / 2, dy: padding / 2), xRadius: 4, yRadius: 4).fill()
-          // Four fifths of the system's own body size, and 1.25 line spacing: this is a region's
-          // text laid over the region, so it has to hold more words in the same box than the layout
-          // it replaced -- a notch smaller than what the machine reads at, with the lines given
-          // room, since a run with its breaks taken out is a wall otherwise.
-          let style = NSMutableParagraphStyle()
-          style.lineBreakMode = .byWordWrapping
-          style.lineHeightMultiple = 1.25
-          func attributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
-            [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.white, .paragraphStyle: style]
+      if let plate = textBox() {
+        NSColor(calibratedWhite: 0.08, alpha: 0.94).setFill()
+        NSBezierPath(roundedRect: plate.box, xRadius: 4, yRadius: 4).fill()
+        // The highlight is laid down before the words and the caret after them, which is the only
+        // order that leaves both visible; they are never both up, since a selection is exactly the
+        // state in which there is no one place the next character goes.
+        var bar: CGRect?
+        if let caret, let range = selected(length: plate.text.length), notice == nil {
+          if range.length > 0 {
+            let glyphs = plate.layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            Self.selectionFill.setFill()
+            // One rect per line fragment rather than one per glyph, so a selection running over a
+            // wrap is drawn as the two part-lines it looks like rather than as a stack of boxes.
+            plate.layout.enumerateEnclosingRects(forGlyphRange: glyphs,
+                                                 withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                                                 in: plate.container) { rect, _ in plate.place(rect).fill() }
+          } else {
+            var caretPlace = plate.place(caretRect(caret, layout: plate.layout, container: plate.container,
+                                                   length: plate.text.length))
+            caretPlace.size.width = 2
+            bar = caretPlace
           }
-          // Laid out to be measured, rather than asking boundingRect: it does not count the leading
-          // that lineHeightMultiple adds, so it reports a wall of text a fifth shorter than it
-          // draws, and the box built from that figure cuts the last lines off.
-          let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-          func height(_ text: NSAttributedString) -> CGFloat {
-            let storage = NSTextStorage(attributedString: text)
-            let container = NSTextContainer(size: CGSize(width: inset.width, height: .greatestFiniteMagnitude))
-            container.lineFragmentPadding = 0
-            let layout = NSLayoutManager()
-            layout.addTextContainer(container)
-            storage.addLayoutManager(layout)
-            layout.ensureLayout(for: container)
-            return ceil(layout.usedRect(for: container).height) + 2
-          }
-          // Shrink below the system size only where the region holds more words than it has room
-          // for, down to a floor: the alternative is text cut off mid-sentence with nothing saying so.
-          var size = NSFont.systemFontSize * 0.8
-          var text = NSAttributedString(string: joined, attributes: attributes(size: size))
-          while height(text) > inset.height, size > 8 {
-            size -= 1
-            text = NSAttributedString(string: joined, attributes: attributes(size: size))
-          }
-          // Centred vertically in what is left over, which only shows on the short regions -- a row
-          // whose one line sat hard against the top read as clipped rather than as centred. The box
-          // gives up its top half of the slack and keeps the bottom: text is laid out downwards from
-          // the top, so a rect trimmed at the bottom as well would clip anything the measurement
-          // undercounted, and the centring is not worth paying for in lost lines.
-          let slack = max(0, inset.height - height(text))
-          text.draw(with: CGRect(x: inset.minX, y: inset.minY,
-                                 width: inset.width, height: inset.height - slack / 2), options: options)
+        }
+        plate.text.draw(with: plate.field, options: [.usesLineFragmentOrigin, .usesFontLeading])
+        if let bar {
+          NSColor.white.setFill()
+          bar.fill()
         }
       }
       return
@@ -858,6 +917,165 @@ final class HintView: NSView {
       let remaining = String(box.label.dropFirst(typed.count))
       style.drawPlate(remaining.uppercased(), topLeft: CGPoint(x: box.rect.minX, y: box.rect.maxY))
     }
+  }
+
+  /// The text box exactly as it is drawn: where it sits, and the run laid out at the size it was
+  /// fitted to. It is worked out in one place because three things have to agree about where a word
+  /// is -- the glyphs, the caret between them, and the point a click landed on -- and the shrink
+  /// loop picks a different size for every region, so geometry derived a second time is geometry
+  /// that can disagree with what is on screen.
+  ///
+  /// The storage is carried along with the two things it feeds. A text storage owns its layout
+  /// managers and they refer back to it without owning it, so one left behind is deallocated on the
+  /// way out and the manager that comes back has no text and no glyphs -- which reads as a caret
+  /// asking after glyph indices that do not exist rather than as an object that is gone.
+  struct TextBox {
+    let box: CGRect
+    let field: CGRect
+    let text: NSAttributedString
+    let storage: NSTextStorage
+    let layout: NSLayoutManager
+    let container: NSTextContainer
+
+    /// A container rect in the view's coordinates. The run is laid out downwards from the top of
+    /// `field` in a view that is not flipped, so a rect's top edge is `field.maxY` less its own
+    /// bottom.
+    func place(_ rect: CGRect) -> CGRect {
+      CGRect(x: field.minX + rect.minX, y: field.maxY - rect.maxY, width: rect.width, height: rect.height)
+    }
+  }
+
+  /// Nil whenever nothing is drawn: no region held, the shutter running bare, no text to show, or a
+  /// region too small to fit any of it.
+  func textBox() -> TextBox? {
+    guard let selection, !bare, let string = notice ?? joined else { return nil }
+    // Over the region rather than beside it: the joined text is what the region says, and the
+    // region is the only box on screen guaranteed to be where the eye already is. Opaque, because
+    // text drawn over text is neither of them.
+    // Padding scaled to the region rather than a fixed 8: a link or a table row is one line tall,
+    // which is where a joined run is likeliest to be asked for and where a fixed margin leaves no
+    // room to draw it in.
+    let padding = min(8, max(2, min(selection.width, selection.height) / 8))
+    let inset = selection.insetBy(dx: padding, dy: padding)
+    guard inset.width > 16, inset.height > 8 else { return nil }
+    // Four fifths of the system's own body size, and 1.25 line spacing: this is a region's text
+    // laid over the region, so it has to hold more words in the same box than the layout it
+    // replaced -- a notch smaller than what the machine reads at, with the lines given room, since
+    // a run with its breaks taken out is a wall otherwise.
+    let style = NSMutableParagraphStyle()
+    style.lineBreakMode = .byWordWrapping
+    style.lineHeightMultiple = 1.25
+    func attributes(size: CGFloat) -> [NSAttributedString.Key: Any] {
+      [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.white, .paragraphStyle: style]
+    }
+    func laid(_ text: NSAttributedString) -> (NSTextStorage, NSLayoutManager, NSTextContainer) {
+      let storage = NSTextStorage(attributedString: text)
+      let container = NSTextContainer(size: CGSize(width: inset.width, height: .greatestFiniteMagnitude))
+      container.lineFragmentPadding = 0
+      let layout = NSLayoutManager()
+      layout.addTextContainer(container)
+      storage.addLayoutManager(layout)
+      layout.ensureLayout(for: container)
+      return (storage, layout, container)
+    }
+    // Laid out to be measured, rather than asking boundingRect: it does not count the leading that
+    // lineHeightMultiple adds, so it reports a wall of text a fifth shorter than it draws, and the
+    // box built from that figure cuts the last lines off.
+    func height(_ text: NSAttributedString) -> CGFloat {
+      let (storage, layout, container) = laid(text)
+      defer { _ = storage }
+      return ceil(layout.usedRect(for: container).height) + 2
+    }
+    // Shrink below the system size only where the region holds more words than it has room for,
+    // down to a floor: the alternative is text cut off mid-sentence with nothing saying so.
+    var size = NSFont.systemFontSize * 0.8
+    var text = NSAttributedString(string: string, attributes: attributes(size: size))
+    while height(text) > inset.height, size > 8 {
+      size -= 1
+      text = NSAttributedString(string: string, attributes: attributes(size: size))
+    }
+    // Centred vertically in what is left over, which only shows on the short regions -- a row whose
+    // one line sat hard against the top read as clipped rather than as centred. The box gives up its
+    // top half of the slack and keeps the bottom: text is laid out downwards from the top, so a rect
+    // trimmed at the bottom as well would clip anything the measurement undercounted, and the
+    // centring is not worth paying for in lost lines.
+    let slack = max(0, inset.height - height(text))
+    let (storage, layout, container) = laid(text)
+    return TextBox(box: selection.insetBy(dx: padding / 2, dy: padding / 2),
+                   field: CGRect(x: inset.minX, y: inset.minY,
+                                 width: inset.width, height: inset.height - slack / 2),
+                   text: text, storage: storage, layout: layout, container: container)
+  }
+
+  /// The character a point in the view lands between, or nil when it is not over the box at all.
+  /// The fraction is what makes a click land on a boundary rather than on a glyph: past the middle
+  /// of a character the caret belongs after it, which is where a person aiming between two letters
+  /// expects it.
+  func offset(at point: CGPoint) -> Int? {
+    guard let plate = textBox(), plate.box.contains(point) else { return nil }
+    let inContainer = CGPoint(x: point.x - plate.field.minX, y: plate.field.maxY - point.y)
+    var fraction: CGFloat = 0
+    let index = plate.layout.characterIndex(for: inContainer, in: plate.container,
+                                            fractionOfDistanceBetweenInsertionPoints: &fraction)
+    return index + (fraction > 0.5 && index < plate.text.length ? 1 : 0)
+  }
+
+  /// The drawn line an offset sits on, trailing space trimmed off. A line here is a line on the
+  /// screen: the run has no breaks left in it, so the only lines it has are the ones the box
+  /// wrapped, and the end of one is where the words stop rather than where the wrap happened.
+  func lineBounds(around offset: Int) -> NSRange? {
+    guard let plate = textBox() else { return nil }
+    let string = plate.text.string as NSString
+    guard string.length > 0 else { return NSRange(location: 0, length: 0) }
+    let glyph = plate.layout.glyphIndexForCharacter(at: max(0, min(offset, string.length - 1)))
+    var glyphs = NSRange()
+    _ = plate.layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: &glyphs)
+    var line = plate.layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+    while line.length > 0,
+          CharacterSet.whitespacesAndNewlines.contains(
+            Unicode.Scalar(string.character(at: NSMaxRange(line) - 1)) ?? " ") {
+      line.length -= 1
+    }
+    return line
+  }
+
+  /// The offset one drawn line up or down, holding the horizontal place the caret was at -- the
+  /// column-keeping move every other field makes, worked out on the layout that drew the text
+  /// rather than on a guess at the line height.
+  func verticalOffset(from offset: Int, down: Bool) -> Int? {
+    guard let plate = textBox() else { return nil }
+    let here = caretRect(offset, layout: plate.layout, container: plate.container, length: plate.text.length)
+    let step = here.height > 0 ? here.height : 12
+    let target = CGPoint(x: here.minX, y: here.midY + (down ? step : -step))
+    guard target.y >= 0 else { return 0 }
+    guard target.y <= plate.layout.usedRect(for: plate.container).maxY else { return plate.text.length }
+    var fraction: CGFloat = 0
+    let index = plate.layout.characterIndex(for: target, in: plate.container,
+                                            fractionOfDistanceBetweenInsertionPoints: &fraction)
+    return index + (fraction > 0.5 && index < plate.text.length ? 1 : 0)
+  }
+
+  /// Where the caret sits in a laid-out run, in the container's own downward coordinates. The end
+  /// of the run is the case the layout manager has no glyph to answer with, and it is where a caret
+  /// spends most of its time -- so it is taken from the trailing edge of the last glyph, or from the
+  /// empty fragment AppKit keeps past a trailing newline.
+  private func caretRect(_ index: Int, layout: NSLayoutManager, container: NSTextContainer,
+                         length: Int) -> CGRect {
+    let index = max(0, min(index, length))
+    if length == 0 || (index >= length && layout.extraLineFragmentTextContainer != nil) {
+      let line = layout.extraLineFragmentRect
+      return CGRect(x: 0, y: line.minY, width: 0, height: line.height > 0 ? line.height : 12)
+    }
+    if index >= length {
+      let glyph = layout.glyphIndexForCharacter(at: length - 1)
+      let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+      let last = layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+      return CGRect(x: last.maxX, y: line.minY, width: 0, height: line.height)
+    }
+    let glyph = layout.glyphIndexForCharacter(at: index)
+    let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+    return CGRect(x: line.minX + layout.location(forGlyphAt: glyph).x,
+                  y: line.minY, width: 0, height: line.height)
   }
 
   /// The shortcut list over the middle of the overlay, with everything behind it dimmed: the keys
@@ -916,9 +1134,19 @@ enum HelpSheet {
         ("\u{2318}\u{21E7}C", "copy text"),
         ("\u{21E7}J", "join text into one line"),
         ("\u{21E7}T", "transcribe the text in the image"),
+        ("\u{21E7}E", "put the caret back in that text"),
         ("\u{2190} \u{2192} or H L", "select the next/prev region"),
         ("\u{2191} or K", "select the parent region"),
         ("\u{2193} or J", "select the child region"),
+      ]),
+      ("Editing Text", [
+        ("click or drag", "put the caret there, or select"),
+        ("\u{2325}\u{2190} \u{2325}\u{2192}", "move by word"),
+        ("\u{2318}\u{2190} \u{2318}\u{2192}", "move to the ends of the line"),
+        ("\u{21E7}", "with any move, select instead"),
+        ("\u{2318}A", "select all"),
+        ("\u{2318}C or \u{2318}\u{21E7}C", "copy the selection"),
+        ("esc", "put back what it said, and stop editing"),
       ]),
       ("Any time", [
         ("esc or " + (hotkey ?? ""), "cancel"),
@@ -1028,6 +1256,28 @@ func typedLetter(_ event: CGEvent) -> String? {
   return String(Character(scalar)).lowercased()
 }
 
+/// What a key event would insert into a text field: the shift and the dead-key composition kept, the
+/// case kept, and any length. `typedLetter` is the other question, asked by the hints and by the
+/// keys picked for the word they stand for, and it folds the case away because those match either
+/// way.
+func typedString(_ event: CGEvent) -> String? {
+  var length = 0
+  var characters = [UniChar](repeating: 0, count: 32)
+  event.keyboardGetUnicodeString(maxStringLength: 32, actualStringLength: &length, unicodeString: &characters)
+  guard length > 0 else { return nil }
+  var string = String(utf16CodeUnits: characters, count: length)
+  // A control character is a key rather than text. Tab, Home and the function keys all report one,
+  // and inserting it would put a glyph nobody typed into the middle of the run.
+  guard !string.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return nil }
+  // The same repair `questionMark` makes, for the same reason: a synthesised event does not always
+  // carry the shifted character, and reports the letter the key sits on with the flags left to say
+  // what was done to it. Uppercasing under Shift is what the layout already did on a real press, so
+  // it changes nothing there and is the whole answer for a posted one -- which is what a text
+  // expander, a remote desktop and this repo's own driver all send.
+  if event.flags.contains(.maskShift) { string = string.uppercased() }
+  return string
+}
+
 /// Shared with the event tap callback, which is a C function pointer and cannot capture context.
 final class Session {
   static var shared: Session!
@@ -1054,8 +1304,46 @@ final class Session {
   /// arrow step and is recomputed for whatever is held next, since the question Shift-J asked was
   /// about the text and not about that one region.
   var joined: String?
+  /// Where the caret sits in `joined` while Shift-E has the box open for typing, as a UTF-16 offset.
+  /// Nil is the closed box, and the difference is the whole keyboard: with the box open every key
+  /// that is not a chord is a character, HJKL and `?` included.
+  var caret: Int?
+  /// The end of the selection the caret is not on, so Shift and an arrow describe a run rather than
+  /// a point. Equal to the caret is no selection, which is where every edit starts.
+  var anchor = 0
+  /// What the box held when Shift-E opened it, and whether that was itself typed, so Escape can put
+  /// it back. There is no undo on the overlay and nowhere to hang one, and an edit that cannot be
+  /// abandoned where it was made is an edit nobody starts.
+  var beforeEdit: (text: String, edited: Bool)?
+  /// Whether what the copy chords would hand over is something the user typed rather than something
+  /// the region or the API said. It pins the text to the region it was typed over, the way a
+  /// transcription is pinned to the picture it was read off: a step takes it down rather than
+  /// carrying hand-typed words onto a region that never said them.
+  var edited = false
   /// How long the text walk may take, which is the same budget the region walk was given.
   var budgetMs = 2000
+
+  /// The selected run, clamped to the text there is. Empty is the plain insertion point.
+  var selectedRange: NSRange {
+    guard let caret, let joined else { return NSRange(location: 0, length: 0) }
+    let length = (joined as NSString).length
+    let low = max(0, min(min(caret, anchor), length))
+    let high = max(0, min(max(caret, anchor), length))
+    return NSRange(location: low, length: high - low)
+  }
+
+  /// Whether part of the box is selected, which is the one thing that changes what a copy chord
+  /// means: with a run picked out, both of them hand over that run and not the box around it.
+  var selecting: Bool { caret != nil && selectedRange.length > 0 }
+
+  /// What a copy chord hands over. The selected run if there is one, the whole box if not, and
+  /// nothing at all if no box is up -- in which case the caller falls back to walking the region's
+  /// text, the way it did before either key existed.
+  var copyText: String? {
+    guard let joined else { return nil }
+    guard selecting else { return joined }
+    return (joined as NSString).substring(with: selectedRange)
+  }
   /// What the last Shift-T read off the held region, kept while that region stays held so the key
   /// can be toggled without paying for the answer again. Dropped by a step, which changes the
   /// picture the answer was about.
@@ -1067,6 +1355,10 @@ final class Session {
   /// overlay's deadline is not the request's, and an answer that arrives after the overlay is down
   /// has nothing to draw itself on.
   var request: URLSessionTask?
+  /// What turns a click's screen point into a point in the overlay's view: Quartz counts down from
+  /// the top of the primary screen and the view counts up from the overlay's own corner.
+  var flipBase: CGFloat = 0
+  var overlayOrigin = CGPoint.zero
   /// How long the overlay waits after hiding itself before photographing the region, so the window
   /// server has composited the mask away. The same beat the shutter takes.
   var delayMs = 60
@@ -1093,6 +1385,10 @@ final class Session {
     // behind the panel is, and a sheet opened to read is not a session anybody meant to abandon.
     if keyCode == 53 {  // escape
       if help { help = false; refresh(); return }
+      // An open box is dismissed before the session under it, for the same reason the sheet above
+      // is: the key that abandons an edit is the key everything else abandons an edit with, and a
+      // session nobody meant to end is a worse thing to lose than a line of retyping.
+      if caret != nil { abandonEdit(); return }
       cancelled = true
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
@@ -1106,6 +1402,9 @@ final class Session {
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
     }
+    // The open box is asked before everything below it, and it answers Command keys too -- the
+    // arrows, the deletes and Command-A are a field's. `ownedByField` is where the line is drawn.
+    if ownedByField(event) { edit(event); return }
     // The shortcut list, in either state and before everything below it, since what it draws
     // covers the keys the rest of this reads. `?` as the layout types it rather than the key Shift
     // and slash sit on, for the same reason Shift-J is a letter: it was picked for what it means.
@@ -1156,6 +1455,9 @@ final class Session {
       // Shift-T beside it, and read as a letter for the same reason: J joins the words the tree
       // already has, T reads the ones only the pixels have.
       if event.flags.contains(.maskShift), typedLetter(event) == "t" { transcribe(); return }
+      // Shift-E on whatever those two put in the box. A letter again, and for the third time the
+      // same reason: it is the word, not the key the word starts on.
+      if event.flags.contains(.maskShift), typedLetter(event) == "e" { beginEdit(); return }
       if keyCode == 51 { release() }  // delete, back to the hints
       if let index = heldIndex {
         switch keyCode {
@@ -1201,9 +1503,16 @@ final class Session {
     heldIndex = index
     view.selection = view.boxes[index].rect
     view.notice = nil
-    if transcribed || transcription != nil {
+    caret = nil
+    anchor = 0
+    beforeEdit = nil
+    // A join follows the step and is recomputed, because the question it asked was about the text
+    // and not about that one region. A transcription and an edit do not: one was read off a picture
+    // this is no longer of, and the other was typed over words this region never said.
+    if transcribed || transcription != nil || edited {
       transcribed = false
       transcription = nil
+      edited = false
       joined = nil
     } else if joined != nil {
       joined = regionText(candidates[index], budgetMs: budgetMs, separator: " ")
@@ -1223,8 +1532,245 @@ final class Session {
       let text = regionText(region, budgetMs: budgetMs, separator: " ")
       guard !text.isEmpty else { NSSound.beep(); return }
       joined = text
+      openBox()
     }
     deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// A click on the text box, arriving through the tap rather than through the window. The overlay
+  /// ignores the mouse the way it ignores focus, and it has to: a panel that accepted a click would
+  /// activate the app and redraw the target's title bar inactive, which is the picture every other
+  /// decision here is arranged not to take. The tap sees the press before any window does, so the
+  /// box can answer it without the app ever becoming the thing that was clicked.
+  ///
+  /// Returns whether the click was ours. Only ever while a box is on screen: everywhere else on the
+  /// overlay a click belongs to whatever is under the mask, which is where it has always gone. With
+  /// a box up the whole overlay takes them, because a click that missed the box by a few points
+  /// would otherwise land in a window the mask is hiding.
+  func mouse(_ event: CGEvent, type: CGEventType) -> Bool {
+    guard let text = joined, view.notice == nil, !photographing else { return false }
+    let string = text as NSString
+    let point = CGPoint(x: event.location.x - overlayOrigin.x,
+                        y: (flipBase - event.location.y) - overlayOrigin.y)
+    switch type {
+    case .leftMouseDown:
+      guard let offset = view.offset(at: point) else { return true }
+      // A click opens the box as well as aiming it. Shift-E is the key that says "correct this",
+      // but a person who can see a field reaches for the mouse first, and a click that placed a
+      // caret in a box that was not listening would be the worst of both.
+      if caret == nil { beforeEdit = (text, edited) }
+      caret = offset
+      anchor = offset
+      // Twice for the run between the spaces either side, three times for the lot. Whitespace
+      // rather than word boundaries: what is in the box is being trimmed rather than written, and
+      // the thing being cut out is generally a stamp or a label that carries its own punctuation.
+      switch event.getIntegerValueField(.mouseEventClickState) {
+      case 2:
+        let before = string.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards,
+                                             range: NSRange(location: 0, length: offset))
+        let after = string.rangeOfCharacter(from: .whitespacesAndNewlines,
+                                            range: NSRange(location: offset, length: string.length - offset))
+        anchor = before.location == NSNotFound ? 0 : NSMaxRange(before)
+        caret = after.location == NSNotFound ? string.length : after.location
+      case let repeated where repeated >= 3:
+        anchor = 0
+        caret = string.length
+      default: break
+      }
+    case .leftMouseDragged:
+      guard caret != nil, let offset = view.offset(at: point) else { return true }
+      caret = offset
+    default:
+      return true
+    }
+    deadline = Date().addingTimeInterval(30)
+    refresh()
+    return true
+  }
+
+  /// Put the caret in the box, at the start and selecting nothing. At the start rather than at the
+  /// end a field would use, because the box is read before it is typed in: the run is put on screen
+  /// to be checked against the region under it, and the eye starts where the words do. Selecting
+  /// nothing, since a box that came up with everything selected would be one keystroke from losing
+  /// all of it.
+  ///
+  /// Called the moment either key fills the box, so what is drawn is a field from the first frame:
+  /// a box that showed the words and ignored the keyboard until a second key was found is a box that
+  /// does not answer the first thing tried on it.
+  ///
+  /// Nothing else on the overlay reads the keyboard while it is open. That is the price of it, and
+  /// the way back out is Escape: the box stays drawn and unfocused, the arrows step regions again,
+  /// and a second Escape ends the session.
+  func openBox() {
+    guard joined != nil else { return }
+    if let text = joined, caret == nil { beforeEdit = (text, edited) }
+    caret = 0
+    anchor = 0
+  }
+
+  /// Put the caret back after an Escape. Only ever on text that is already on screen: there is
+  /// nothing to correct before Shift-J or Shift-T has put something in the box, and a notice is the
+  /// app talking rather than the region.
+  func beginEdit() {
+    guard joined != nil, view.notice == nil, request == nil else { NSSound.beep(); return }
+    openBox()
+    deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// Take the caret out of the box and put back what the region or the API said. One key does both
+  /// because they are one thing: an edit made in the place the original is still on screen beside it
+  /// should be abandonable there too, and there is no undo on an overlay to abandon it with
+  /// otherwise. What is left behind is the box as Shift-J drew it, unfocused -- the arrows step
+  /// regions again, Shift-J takes it down, and a second Escape ends the session.
+  func abandonEdit() {
+    if let before = beforeEdit {
+      joined = before.text
+      edited = before.edited
+    }
+    caret = nil
+    anchor = 0
+    beforeEdit = nil
+    deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// One keystroke into the open box. What a one-line field does and nothing beyond it: no
+  /// selection, no undo past Escape, and no clipboard of its own -- the two chords that end a hold
+  /// are the clipboard, and handing them a corrected run is the whole point of the box being open.
+  /// Where a word ends, or begins, from here. Foundation's own word enumeration rather than a scan
+  /// invented in this file, so "one word" means what it means in every other field on the machine
+  /// -- including in the places a run of punctuation is not one.
+  func wordBoundary(_ string: NSString, from offset: Int, forward: Bool) -> Int {
+    var landing = forward ? string.length : 0
+    let range = forward ? NSRange(location: offset, length: string.length - offset)
+                        : NSRange(location: 0, length: offset)
+    guard range.length > 0 else { return landing }
+    string.enumerateSubstrings(in: range,
+                               options: forward ? [.byWords] : [.byWords, .reverse]) { _, word, _, stop in
+      let edge = forward ? NSMaxRange(word) : word.location
+      guard forward ? edge > offset : edge < offset else { return }
+      landing = edge
+      stop.pointee = true
+    }
+    return landing
+  }
+
+  /// Whether the open box takes this key, or whether the session does. Everything unmodified is the
+  /// field's -- `?` and the letters the arrows share included, since a field that ate its own
+  /// question mark to draw a shortcut list would be the one place on the overlay where typing does
+  /// not type. Under Command it is the keys a field is expected to own: the arrows and the deletes,
+  /// which carry their usual far-and-wide meanings, and Command-A. What the session keeps is the two
+  /// chords that end a hold and the one that opens settings -- a Command-C aimed at the clipboard is
+  /// not a keystroke a text box should swallow.
+  func ownedByField(_ event: CGEvent) -> Bool {
+    guard caret != nil else { return false }
+    switch event.getIntegerValueField(.keyboardEventKeycode) {
+    // Return is the shutter and stays the shutter. A field would commit on it, but there is nothing
+    // here for a commit to mean: everything you would do after closing the box either discards the
+    // edit anyway -- a step, a Shift-J -- or works perfectly well with it open, which the copy
+    // chords do. What is left is Return, and making the app's oldest key a second press to reach
+    // would be paying for a state nobody needs.
+    case 36, 76: return false
+    // The keys a field owns however they are modified: the letter A so Command-A selects, the two
+    // deletes, and the arrows.
+    case 0, 51, 117, 123, 124, 125, 126: return true
+    // Everything else is the field's only unmodified. What Command keeps is the two chords that end
+    // a hold and the one that opens settings -- a Command-C aimed at the clipboard is not a
+    // keystroke a text box should swallow.
+    default: return !event.flags.contains(.maskCommand)
+    }
+  }
+
+  /// One keystroke into the open box. What a field does, and the modifiers mean on the arrows and
+  /// the deletes what they mean everywhere else: Option or Control a word, Command the ends of the
+  /// drawn line, Shift with any of them selecting rather than moving. None of it comes for free --
+  /// AppKit's key bindings arrive through the responder chain, and this box is never in one, because
+  /// a window that took the keyboard would take the focus with it and photograph the target with its
+  /// title bar greyed out. So the bindings are spelled out here, over Foundation's word boundaries
+  /// and the layout manager's lines, rather than reinvented on top of a character scan.
+  func edit(_ event: CGEvent) {
+    guard let caret, let text = joined else { return }
+    let string = text as NSString
+    let selection = selectedRange
+    let flags = event.flags
+    let extending = flags.contains(.maskShift)
+    // Option is the macOS habit and Control the one people bring with them; both mean a word here,
+    // since neither has anything else to mean inside a box that has the whole keyboard anyway.
+    let byWord = flags.contains(.maskAlternate) || flags.contains(.maskControl)
+    let toEnd = flags.contains(.maskCommand)
+    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    // Restarted on every keystroke, the way a hold is. Retyping a sentence takes longer than
+    // reading one, and the run loop had no way to know it was being asked to wait for that.
+    defer { deadline = Date().addingTimeInterval(30) }
+
+    func caretAndAnchor(_ offset: Int) {
+      self.caret = offset
+      anchor = offset
+    }
+    /// Put the caret somewhere, dropping the selection unless Shift is asking to keep the far end.
+    func move(to offset: Int) {
+      self.caret = offset
+      if !extending { anchor = offset }
+    }
+    /// Replace the selected run, or insert at the caret when nothing is selected. Both are the same
+    /// operation on a range, which is why a typed character and a Delete over a selection agree
+    /// about what they take out.
+    func replace(_ range: NSRange, with insert: String) {
+      joined = string.replacingCharacters(in: range, with: insert)
+      caretAndAnchor(range.location + (insert as NSString).length)
+      edited = true
+    }
+    /// Where an arrow lands, given what is held with it. Vertical Command and Option go to the ends
+    /// of the whole run rather than of a line: the box holds one paragraph, so there is no third
+    /// distance for them to mean.
+    func destination(_ keyCode: Int64) -> Int {
+      switch keyCode {
+      case 123:  // left
+        if toEnd { return view.lineBounds(around: caret)?.location ?? 0 }
+        if byWord { return wordBoundary(string, from: caret, forward: false) }
+        return caret > 0 ? string.rangeOfComposedCharacterSequence(at: caret - 1).location : 0
+      case 124:  // right
+        if toEnd { return view.lineBounds(around: caret).map { NSMaxRange($0) } ?? string.length }
+        if byWord { return wordBoundary(string, from: caret, forward: true) }
+        return caret < string.length ? NSMaxRange(string.rangeOfComposedCharacterSequence(at: caret)) : string.length
+      case 126:  // up
+        return toEnd || byWord ? 0 : (view.verticalOffset(from: caret, down: false) ?? 0)
+      default:  // down
+        return toEnd || byWord ? string.length : (view.verticalOffset(from: caret, down: true) ?? string.length)
+      }
+    }
+    switch keyCode {
+    case 0 where toEnd:  // command-a
+      anchor = 0
+      self.caret = string.length
+    case 51:  // delete
+      // A selection is what the key takes out when there is one; otherwise it takes out whatever the
+      // matching arrow would have moved over, which is what makes Option-Delete a word and
+      // Command-Delete the start of the line without either being spelled out twice.
+      if selection.length > 0 { replace(selection, with: ""); break }
+      let from = destination(123)
+      guard from < caret else { NSSound.beep(); return }
+      replace(NSRange(location: from, length: caret - from), with: "")
+    case 117:  // forward delete
+      if selection.length > 0 { replace(selection, with: ""); break }
+      let to = destination(124)
+      guard to > caret else { NSSound.beep(); return }
+      replace(NSRange(location: caret, length: to - caret), with: "")
+    case 123, 124, 125, 126:  // the arrows
+      // A plain horizontal arrow over a selection collapses to the end it points at rather than
+      // stepping one character from the caret, which is what every other field does with it. A
+      // modified one moves off that end instead, which is also what they do.
+      if selection.length > 0, !extending, !byWord, !toEnd, keyCode == 123 || keyCode == 124 {
+        caretAndAnchor(keyCode == 123 ? selection.location : NSMaxRange(selection))
+        break
+      }
+      move(to: destination(keyCode))
+    default:
+      guard !toEnd, let typed = typedString(event) else { return }
+      replace(selection.length > 0 ? selection : NSRange(location: caret, length: 0), with: typed)
+    }
     refresh()
   }
 
@@ -1253,6 +1799,7 @@ final class Session {
     if let transcription {
       joined = transcription
       transcribed = true
+      openBox()
       deadline = Date().addingTimeInterval(30)
       refresh()
       return
@@ -1302,6 +1849,7 @@ final class Session {
           self.transcription = text
           self.joined = text
           self.transcribed = true
+          self.openBox()
         } else {
           self.view.notice = "Transcription failed (\(failure ?? "unknown"))"
           NSSound.beep()
@@ -1372,6 +1920,10 @@ final class Session {
     joined = nil
     transcribed = false
     transcription = nil
+    edited = false
+    caret = nil
+    anchor = 0
+    beforeEdit = nil
     view.selection = nil
     view.notice = nil
     refresh()
@@ -1380,6 +1932,8 @@ final class Session {
   func refresh() {
     view.typed = typed
     view.joined = joined
+    view.caret = caret
+    view.anchor = anchor
     view.help = help
     view.hotkey = cancelChord?.display
     view.needsDisplay = true
@@ -1389,6 +1943,10 @@ final class Session {
 func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, context: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
   switch type {
   case .keyDown: Session.shared.key(event)
+  case .leftMouseDown, .leftMouseDragged, .leftMouseUp:
+    // Down, drag and up are answered together or not at all: a swallowed press whose release got
+    // through leaves the app underneath holding a button it never saw let go of.
+    guard Session.shared.mouse(event, type: type) else { return Unmanaged.passUnretained(event) }
   case .tapDisabledByTimeout, .tapDisabledByUserInput:
     if let tap = context { CGEvent.tapEnable(tap: Unmanaged<CFMachPort>.fromOpaque(tap).takeUnretainedValue(), enable: true) }
     return nil
@@ -1832,13 +2390,21 @@ func runSession(_ options: Options) -> Outcome {
   session.budgetMs = options.budgetMs
   session.delayMs = options.delayMs
   session.cancelChord = options.cancelChord
+  session.flipBase = flipBase
+  session.overlayOrigin = overlayFrame.origin
   Session.shared = session
 
   guard let tap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
     place: .headInsertEventTap,
     options: .defaultTap,
-    eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+    // The mouse comes in for the text box and for nothing else -- the session hands back every
+    // click it does not want, so the hints and the plain mask keep letting one through to whatever
+    // is under them. Moves are not asked for: a drag reports itself, and hover means nothing here.
+    eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue)
+      | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+      | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
+      | CGEventMask(1 << CGEventType.leftMouseUp.rawValue),
     callback: tapCallback,
     userInfo: nil)
   else {
@@ -1867,14 +2433,14 @@ func runSession(_ options: Options) -> Outcome {
   if session.copying, let chosen = session.chosen {
     // Whatever is on screen is what is copied: the transcription if Shift-T put it there, the joined
     // run if Shift-J did, and otherwise the text laid out the way the region laid it out.
-    let text = session.joined ?? regionText(chosen, budgetMs: options.budgetMs)
+    let text = session.copyText ?? regionText(chosen, budgetMs: options.budgetMs)
     let box = chosen.rect
     guard !text.isEmpty else {
       return Outcome(code: 13, line: "app=\(name) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
     }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.selecting ? "selection" : session.edited ? "edited" : session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   // Give the window server a beat to composite the overlay away before the shutter.

@@ -84,6 +84,14 @@ which are matched on the code, are unaffected. Drive those with `keystroke "J"`,
 character. A run where one key of a sequence silently did nothing and the rest worked is this, not a
 missed keystroke.
 
+A posted event carries the letter its key sits on and leaves Shift in the flags to say what was
+done to it, which matters the moment a driven session is *typing* rather than pressing. `typedString`
+uppercases under Shift for exactly this, so `keystroke "ABC"` inserts `ABC` -- but uppercasing is the
+whole of the repair, and a shifted punctuation key is not a case change. `keystroke "<<"` inserts
+`,,`, `keystroke "!"` inserts `1`, and neither is a bug in the app: a real press carries the shifted
+character and never reaches the repair. Assert an edit with letters, and read a stray comma in the
+result as the driver rather than as the caret.
+
 Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,
 and a key sent early is delivered to the target app instead.
 
@@ -148,6 +156,17 @@ axshot behind a throwaway option rather than a scratch binary, which would need 
     down.post(tap: .cghidEventTap)
     Thread.sleep(forTimeInterval: 1.2)  // past the walk, so the tap is up before the release
     // ... then the matching keyDown: false
+
+The mouse is that case and worse: nothing on a stock machine posts a real click. System Events'
+`click at {x, y}` resolves the element under the point and presses it through the accessibility API
+-- it returns the element it hit, which reads like proof it worked -- and no CGEvent is ever posted,
+so an event tap never sees it and the click lands in the window under the overlay instead. There is
+no `cliclick`, and the system `python3` has no PyObjC to post one from. So a click, a double click
+and a drag are all driven the same way as a held chord: a throwaway option on axshot itself, posting
+`leftMouseDown`, `leftMouseDragged` and `leftMouseUp` with `mouseEventClickState` set, from a second
+invocation while the first is holding the overlay. A session that goes on behaving as though the
+click never happened -- an arrow that steps the region rather than the caret -- is this, not the
+handler.
 
 Run any such reproduction against a build *without* the fix before trusting it. One that passes
 either way is measuring something other than what it was written for, and it will go on passing

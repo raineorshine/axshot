@@ -147,8 +147,11 @@ explained where it is implemented.
   button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader
   gets Escape and nothing else. [docs/accessibility.md](docs/accessibility.md) is the set of ways
   this looks done when it is not.
-- **The app never takes focus.** Hint keys come from an event tap. A focused target redraws its
-  title bar inactive, and the screenshot would show that.
+- **The app never takes focus.** Hint keys come from an event tap, and so do the clicks that aim
+  the text box — the overlay window ignores the mouse. A focused target redraws its title bar
+  inactive, and the screenshot would show that; a window that accepted a click would activate the
+  app and cause exactly that, which is why input arrives ahead of any window rather than through
+  one.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
   system-wide and the only one needing no permission.
 - **Escape is taken in `keyDown`, never `cancelOperation`.** AppKit only sends `cancelOperation:`
