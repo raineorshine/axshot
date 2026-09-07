@@ -310,6 +310,35 @@ heuristic gets built against a guess. Print it: a throwaway option that walks on
 dumps each element's role, child count and every text attribute it carries answers in one run what
 a dozen driven copies only hint at. It comes back out with the same commit that used it.
 
+## Asking an API directly
+
+Most questions about what macOS will report — an event clock, a window list, what an attribute
+actually holds — are a single call, and `swift` runs one with no project around it:
+
+    swift - <<'SWIFT'
+    import CoreGraphics
+    print(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown))
+    SWIFT
+
+It compiles and runs faster than reading the documentation would settle it, needs no bundle and
+takes no grant of its own, so a guess about an API is never worth carrying into a design. `swift -e`
+does the same for one line. The section below is the exception rather than the rule: a question
+about *identity* is the one the interpreter cannot answer, because the answer is about a bundle it
+does not have.
+
+Two things to get right when what is being probed is a shared machine state rather than a pure
+function of its arguments:
+
+- **Take a quiet baseline inside the probe.** A reading taken while the user happens to be typing or
+  clicking measures them and not the thing under test, and it comes back looking like a clean
+  result — the first measurement of the idle clock said a posted event had reset it when what had
+  reset it was a person. Loop until the state has been still for longer than the effect being
+  measured, then act and read again.
+- **Post inert events, never real ones.** A probe that has to *cause* input sends it wherever the
+  focus is, which is the user's window. A key bound nowhere — F16 — travels the same path and
+  changes nothing on arrival. Posting to the probe's own pid looks safer still and is not the same
+  experiment: it never enters the session, so nothing watching the session sees it.
+
 ## Asking who the process is
 
 A run prints nothing about the identity it is running under, and the same build has two: from the
@@ -319,11 +348,12 @@ path inside `Axshot.app` is the app. AGENTS.md's "Layout" is why, and which APIs
 So drive `bin/axshot` and never `Axshot.app/Contents/MacOS/axshot`. They are the same build and not
 the same process, and the path inside the bundle is the one that passes whether or not the fix is in.
 
-That identity is cheaper to ask of a throwaway bundle than of axshot. Copy the `CFBundleIdentifier`
-into an `Info.plist` beside a few lines of Swift printing whatever is in doubt, build it into a
-`.app`, and run it both ways — at its path and through a symlink to it. It needs no lock, no
-keyboard and no grant of its own, and it is the only cheap way to see the *before*: the real binary
-can only be asked one build at a time, and a fix has to be taken back out to ask it again.
+That identity is what the bundle has to exist for; it is still cheaper to ask of a throwaway one
+than of axshot. Copy the `CFBundleIdentifier` into an `Info.plist` beside a few lines of Swift
+printing whatever is in doubt, build it into a `.app`, and run it both ways — at its path and
+through a symlink to it. It needs no lock, no keyboard and no grant of its own, and it is the only
+cheap way to see the *before*: the real binary can only be asked one build at a time, and a fix has
+to be taken back out to ask it again.
 
 ## Failures that are the environment, not the code
 
