@@ -3,18 +3,25 @@
 Screenshot a region of the screen by typing a hint, not by dragging a rectangle.
 
 Every region worth capturing — a sidebar, a message, a diff panel, a button — is already described
-in the app's accessibility tree, with a frame that can be read. `axshot` walks the focused window's
-tree, keeps the boxes that are actually visible, overlays a Surfingkeys-style hint on each, and
-captures the one whose hint you type. The region snaps to a real element instead of to wherever the
-pointer happened to stop — and where the tree describes nothing to snap to, a rectangle can still be
-dragged by hand.
+in the app's accessibility tree, with a frame that can be read. `axshot` walks the tree of every
+window with pixels of its own on screen, keeps the boxes that are actually visible, overlays a
+Surfingkeys-style hint on each, and captures the one whose hint you type. The region snaps to a real
+element instead of to wherever the pointer happened to stop — and where the tree describes nothing to
+snap to, a rectangle can still be dragged by hand.
+
+Every window and not just the front one, because raising a window to capture it changes the thing
+being captured — the log that is still scrolling, the dialog sitting over what it is about, the two
+windows being compared. A region under another window is not offered: it would photograph that
+window instead. A region the front window takes half of is offered on the half that is left, the
+same way one running off the edge of the screen always has been.
 
 Typing a hint holds the region rather than firing the shutter: everything outside it is masked and
 `Return` takes the shot. The arrows adjust what is held — `←` and `→` step to the neighbouring
 region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
 does not have to be retyped, and `HJKL` do the same four things so the hand can stay on the letters.
 An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
-without typing a letter at all. `Delete` returns to the hints; `Escape` — or a second tap of the
+without typing a letter at all — and they stay inside the window they started in, since two windows
+are two trees and the hints are how the other one is reached. `Delete` returns to the hints; `Escape` — or a second tap of the
 hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
 bar it would otherwise take to get there. `?` puts the whole list of keys on screen — the
 overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
@@ -217,15 +224,27 @@ grant, and what to do when one is listed but denied.
 
 `--dump` prints what would be hinted, with the walk cost:
 
-    app=Claude pid=92604 window=(0,34 735x922)
-    visited=587 boxes=91 candidates=32 walk_ms=26
-      s AXWindow AXStandardWindow depth=0 (0,34 735x922) "Claude"
-      a AXGroup AXLandmarkComplementary depth=13 (0,34 215x922) "Sidebar"
+    windows=4 culled=22 unmatched=0
+    visited=943 boxes=226 candidates=104 walk_ms=30
+      w0 Claude pid=37166 (0,34 735x922) over=0 visited=618 boxes=108 walk_ms=30
+      w1 Preview pid=18770 (0,34 850x922) over=1 visited=32 boxes=5 walk_ms=20
+      w2 Finder pid=1580 (311,190 848x610) over=3 visited=58 boxes=27 walk_ms=21
+      w3 Brave pid=39523 (735,34 735x922) over=3 visited=235 boxes=86 walk_ms=23
+      s w0 AXWindow AXStandardWindow depth=0 (0,34 735x922) "Claude"
+      a w0 AXGroup AXLandmarkComplementary depth=13 (0,34 215x922) "Sidebar"
       ...
 
 `boxes` is what survived the visibility filter, `candidates` what survived the nesting collapse. A
 page that hints the same pixels a dozen times over wants `--min-size` or `nestingRatio` looked at;
 one that misses a region wants `--no-prune` tried first.
+
+The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
+they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
+high `over` and few `boxes` is mostly hidden rather than badly filtered. The per-window `walk_ms`
+overlap, because the windows are walked at once — four of them adding up to 94ms and finishing in 30
+is the concurrency, not a miscount. Each candidate names the window it came out of, and `--focused`
+walks the frontmost window alone, which is the way to look at one app's filtering without the rest of
+the desktop in the output.
 
 ## Measured
 
@@ -237,7 +256,17 @@ On a 735x922 window:
 | Brave      | 847      | 63ms  | 110   | 64     |
 
 The walk is far cheaper than a whole-tree read would suggest, for two reasons: every element is read
-in one round trip rather than four, and a subtree whose parent is entirely off screen is never
-entered. `screencapture` itself, at 100–300ms, is the larger half of the operation — which is why
-nothing is cached between captures. A resident tree cache would turn a ~300ms operation into a
-~250ms one while keeping every Chromium app's accessibility engine switched on all day to do it.
+in one round trip rather than four, and a subtree whose parent cannot be seen is never entered.
+`screencapture` itself, at 100–300ms, is the larger half of the operation — which is why nothing is
+cached between captures. A resident tree cache would turn a ~300ms operation into a ~250ms one while
+keeping every Chromium app's accessibility engine switched on all day to do it.
+
+Hinting every window rather than one costs almost nothing on top of that. A desktop with 26 ordinary
+windows open had 4 with any pixels of their own; the window server says which, in under a
+millisecond and before any accessibility message is sent. Those four walked in 30ms together against
+21ms for the front window alone, because they are four processes answering at the same time:
+
+| windows walked | one at a time | at once |
+|----------------|---------------|---------|
+| 4 (exposed)    | 94ms          | 30ms    |
+| 26 (unculled)  | 541ms         | 244ms   |

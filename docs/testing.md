@@ -75,8 +75,8 @@ posts a key or draws an overlay:
     # activate the target, send the hint, send Return
     bin/axshot --driving off
 
-`on` makes the running app border the frontmost window in the pink hint style, follow it from window
-to window, and put a shadow of the same pink under the pointer; `off` takes both down and
+`on` makes the running app border every screen in the pink hint style and put a shadow of the same
+pink under the pointer; `off` takes both down and
 re-activates whatever application had the foreground when `on` was issued. Neither draws anything in the process it is typed in — the border
 is a window belonging to the running app, and these two runs are the wire to it. So both report
 `app=none` and exit 3 when no app is running, which is the only thing that would say the burst was
@@ -469,11 +469,16 @@ Each of these cost time in the session that built the tool.
       ioreg -n Root -d1 -r | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'
 
   An absent key is an unlocked session; `=Yes` means stop and hand the build over.
-- **Capturing a window's rect captures whatever is on top of it.** `--bundle` aims the walk and not
-  the camera, so the outcome line names the region it meant while the pixels are of whatever was in
-  front. Front the target again before *each* run, not once per test: a run that ends gives the
-  foreground back, and the next one then photographs a different app at the same coordinates and
-  says nothing about it.
+- **`--focused` captures whatever is on top of the window.** It aims the walk and not the camera, so
+  the outcome line names the region it meant while the pixels are of whatever was in front. Front the
+  target again before *each* run, not once per test: a run that ends gives the foreground back, and
+  the next one then photographs a different app at the same coordinates and says nothing about it.
+  The default has no such gap — a covered box is not offered — so this is a reason to reach for
+  `--focused` deliberately rather than to reach for it by habit.
+- **A window that is hinting nothing is usually covered, not broken.** `--dump` says so on the window
+  line: a high `over` with `boxes=0` is a window whose elements all straddle something in front of
+  it, and `culled=` counts the ones that were dropped before being walked at all. Move the window out
+  from under the others before concluding anything about the tree.
 - **The lock is in the main checkout, not the worktree.** `axshot-test-lock.sh` resolves it from the
   first entry of `git worktree list`, so a `.claude/axshot-test.lock` *inside* a worktree is a
   leftover from something else and its contents say nothing about the lock in force — a missing file

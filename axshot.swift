@@ -1,18 +1,35 @@
 // Screenshot a region of the screen picked by hint, not by dragging a rectangle.
 //
 // A region worth capturing -- a sidebar, a message, a diff panel, a single button -- is already
-// described in the app's accessibility tree, with a frame that can be read. axshot walks the
-// focused window's tree, keeps every element whose box is actually visible, overlays a Surfingkeys
-// style hint on each, and captures the one whose hint you type. Nothing is dragged and no
-// coordinates are typed: the region snaps to a real element rather than to wherever the pointer
-// happened to stop -- and where the tree describes nothing to snap to, a rectangle can still be
-// drawn by hand.
+// described in the app's accessibility tree, with a frame that can be read. axshot walks the tree of
+// every window that has pixels of its own on screen, keeps every element whose box is actually
+// visible, overlays a Surfingkeys style hint on each, and captures the one whose hint you type.
+// Nothing is dragged and no coordinates are typed: the region snaps to a real element rather than to
+// wherever the pointer happened to stop -- and where the tree describes nothing to snap to, a
+// rectangle can still be drawn by hand.
+//
+// Every window and not only the front one, because the reason to want a region of a window behind is
+// that raising it would change the thing being captured: a log still scrolling, a dialog sitting
+// over what it is about, the two windows being compared. The hints are already how a region is
+// picked without a pointer, and a window is just one more thing to pick.
 //
 // It runs as a menu bar app holding a global hotkey. Resident, but only as a listener: an idle
-// hotkey costs nothing, and the tree is still walked on demand at each invocation rather than kept
-// warm. Caching it would save the 26-63ms the walk measures against the 100-300ms the capture
+// hotkey costs nothing, and the trees are still walked on demand at each invocation rather than kept
+// warm. Caching them would save the 20-45ms the walk measures against the 100-300ms the capture
 // costs, which is not a saving anyone can see, and would keep every Chromium app's accessibility
-// engine switched on all day to buy it.
+// engine switched on all day to buy it. The engines of the apps with an exposed window do get
+// switched on at each press, which is the standing cost of hinting more than one of them; it is the
+// same switch the front window has always paid for, thrown for a handful of apps instead of one.
+//
+// Walking several windows costs about what walking one did, for two reasons. The window server lists
+// what is on screen front to back, so the windows nothing can be seen of are dropped before a single
+// accessibility message is sent -- on a crowded desktop that was 22 of the 26 ordinary windows, in
+// under a millisecond. And what is left is walked all at once rather than in turn: each window is a
+// different process answering its own messages, so what overlaps is the waiting. Four exposed
+// windows measured 20, 21, 23 and 30ms and took 30ms together, against 21ms for the front window
+// alone. Staggering them -- hints for the front window first, the rest as they arrive -- would buy
+// those few milliseconds at the price of renumbering every hint under a half-typed one, so the
+// overlay waits for all of them.
 //
 // Launched with arguments it is a command line tool instead, which is how the region filter gets
 // looked at:
@@ -21,8 +38,11 @@
 //   axshot --pid 1           ask for Screen Recording and exit without drawing anything
 //   axshot --driving on|off  say that an agent has the foreground, and mark it while it holds
 //
-//   --bundle <id>     target this bundle id instead of the frontmost app
-//   --pid <n>         target this process, for when two instances of an app are running
+//   --bundle <id>     hint only this bundle id's windows instead of every app's
+//   --pid <n>         hint only this process's windows, for when two instances of an app are running
+//   --focused         hint only the focused window of the frontmost app, the way this worked before
+//                     every window did. Nothing is walked beside it and nothing counts as drawn over
+//                     it, which is what makes it the one to tune the filter against
 //   --out <path>      write the PNG to exactly this path instead of a timestamped file
 //   --clipboard       put the image on the clipboard and write no file
 //   --min-size <pt>   ignore boxes smaller than this on either side (default 24)
@@ -30,10 +50,10 @@
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
 //                     enough that two dozen regions are one keystroke each and 196 are two)
 //   --budget-ms <n>   stop walking after this long (default 2000)
-//   --no-prune        walk into elements whose own box is entirely off screen. Off by default:
-//                     web layout puts children inside their parent, so an off-screen parent is an
-//                     off-screen subtree, and skipping it is most of what makes a long
-//                     conversation walkable at all
+//   --no-prune        walk into elements nothing can be seen of -- off screen, or under another
+//                     window. Off by default: web layout puts children inside their parent, so an
+//                     invisible parent is an invisible subtree, and skipping it is most of what
+//                     makes a long conversation walkable at all
 //   --enhanced        also set AXEnhancedUserInterface, the switch VoiceOver uses. Only if the app
 //                     will not expose its web content otherwise; Chromium reads it as a screen
 //                     reader running and changes behaviour accordingly
@@ -203,6 +223,11 @@
 // read as physical keys, in the same layout-independent way as the hotkeys, and only while a region
 // is held -- before that every letter is a hint.
 //
+// All four stop at the window they were pressed in. What they walk is a tree and two windows are two
+// of them; across the boundary document order says only which window was in front, and a key that
+// steps to the next sibling would be stepping to something else on the screen entirely. Reaching
+// another window is what the hints are for.
+//
 // An arrow pressed with the hints still up holds the outermost region instead, which is where the
 // arrows can reach every other region from -- so the tree can be walked without ever picking a
 // letter, for when nothing lettered is close and reading the hints is more work than stepping. Only
@@ -281,11 +306,23 @@
 // how a legend is put down. The window is built fresh each time it is opened, since the hotkey it
 // spells out is a setting that can change between one reading and the next.
 //
-// Only what is visible. A box is kept only where it intersects the focused window, and it is
-// captured clipped to that intersection. An element scrolled out of view still has a frame, and
-// capturing it would photograph whatever is in that part of the screen instead, so it is dropped
-// before it can be hinted. Occlusion by other windows is not considered: the target window is
-// frontmost by construction.
+// Only what is visible, which is now two rules that are the same rule. A box is kept only where it
+// intersects its own window, and only where no window in front of that one is drawn over it; it is
+// captured clipped to what is left. An element scrolled out of view, or under another window, still
+// has a frame, and capturing it would photograph whatever is in that part of the screen instead.
+//
+// Both crop rather than reject, because that is what the window edge has always done and an element
+// half behind another window is in the same position as one half off the screen: there is a part of
+// it that is genuinely its own pixels, and it is worth a hint. Where a window is covered across its
+// middle that leaves more than one piece and the largest is the one hinted. What that costs is
+// honest and visible -- a window showing a 115pt strip of itself offers hints on 115pt strips -- and
+// the overlay masks and brackets the region before the shutter, so what will be photographed is on
+// screen before Return is pressed.
+//
+// A window with nothing left at all is never walked, which is what makes the rest affordable.
+// Everything on screen counts as drawn over: the menu bar, the Dock, a floating notification panel.
+// Only ordinary windows are hinted, so a menu, a popover or a Spotlight panel masks the window it
+// is over rather than being offered as a region of its own.
 //
 // The overlay never appears in the shot. It is a borderless window at screen-saver level that is
 // ordered out before the capture runs, with --delay-ms for the compositor. Focus is never taken
@@ -347,20 +384,31 @@
 // posts keystrokes onto the keyboard a person is sitting at and brings windows forward that nobody
 // asked for, and from the outside that is indistinguishable from the machine doing it by itself. So
 // a burst brackets itself: --driving on before it takes the foreground, --driving off when it lets
-// go. While it holds, the running app draws a border around whatever window is frontmost, in the
-// pink of the hint style -- the plate colour picked for turning up in the fewest interfaces, which
-// is the property wanted here too -- and the pointer carries a shadow in the same pink, since a hand
-// reaching for the mouse is not looking at a window edge. Letting go puts the foreground back where
-// the burst found it. It marks the burst and not the test: a build being tried by hand is the user's own session,
-// and a border up for an hour is a colour nobody sees by the second look. The border is taken out of
-// every screenshot on the machine by the window's sharing type rather than by being hidden around
-// each shutter -- a band on a window's edge is inside the region a capture clipped to that window
-// could ask for, and the process photographing is not always the one holding the border. A frame
-// nobody turns off goes out after two minutes and gives the foreground back, since the session that
-// would have turned it off is the one that can die mid-burst. The border is drawn by a layer rather
-// than by hand, for the one thing it has to agree with: macOS rounds a window with a continuous
-// corner and no NSBezierPath draws that curve, so a band mitred by hand parts company with the
-// window at the four places it is most looked at.
+// go. While it holds, the running app draws a border around every screen, in the pink of the hint
+// style -- the plate colour picked for turning up in the fewest interfaces, which is the property
+// wanted here too -- and the pointer carries a shadow in the same pink, since a hand reaching for
+// the mouse is not looking at a screen edge. Letting go puts the foreground back where the burst
+// found it. It marks the burst and not the test: a build being tried by hand is the user's own
+// session, and a border up for an hour is a colour nobody sees by the second look.
+//
+// The screen and not the frontmost window, because what a burst has taken is the machine. A band
+// around one window says the drive is happening in there, and the next thing a burst does is
+// activate something else; a person glancing over saw a mark on a window that is no longer the one
+// being driven, which is a worse answer than no mark at the edge of that window at all. It also
+// takes an accessibility read of the frontmost app five times a second, for a rectangle that is
+// under the app's control -- where the desktop's edge is known outright and changes only when a
+// display does. One band per screen rather than one around the bounding box of them: two displays of
+// different heights leave that box running through dead space at the top of the shorter one, drawing
+// a band nobody can see instead of the one along the edge that is there.
+//
+// The border is taken out of every screenshot on the machine by the window's sharing type rather
+// than by being hidden around each shutter -- a band at the screen's edge is inside any capture that
+// reaches it, and the process photographing is not always the one holding the border. A frame nobody
+// turns off goes out after two minutes and gives the foreground back, since the session that would
+// have turned it off is the one that can die mid-burst. Its corners are square: the 16pt continuous
+// curve the band used to carry was measured against a window, a display's corner is a different
+// shape and one nothing reports, and where a panel rounds it the panel's own mask clips the band --
+// which is a better relationship than a guessed curve competing with it.
 //
 // Exit codes (command line only): 0 captured or copied, 2 not trusted, 3 no target app, 4 no
 // candidate regions, 6 no window, 11 cancelled, 12 capture failed, 13 nothing to copy. A capture that failed for want of Screen
@@ -389,6 +437,10 @@ struct Options {
   var hintChars = "sadfjklewcmpgh"
   var budgetMs = 2000
   var prune = true
+  /// Walk only the focused window of the frontmost app, the way it worked before every window did.
+  /// Nothing occludes it and nothing else is walked, which is what makes it the one to tune the
+  /// filter against.
+  var focused = false
   var enhanced = false
   var prompt = false
   var delayMs = 60
@@ -402,7 +454,7 @@ struct Options {
 }
 
 func usage() -> Never {
-  FileHandle.standardError.write("usage: axshot [--dump] [--bundle ID] [--pid N] [--out PATH] [--clipboard] [--min-size PT] [--max-hints N] [--hint-chars S] [--budget-ms N] [--no-prune] [--enhanced] [--prompt] [--delay-ms N]\n       axshot --driving on|off\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: axshot [--dump] [--bundle ID] [--pid N] [--focused] [--out PATH] [--clipboard] [--min-size PT] [--max-hints N] [--hint-chars S] [--budget-ms N] [--no-prune] [--enhanced] [--prompt] [--delay-ms N]\n       axshot --driving on|off\n".data(using: .utf8)!)
   exit(64)
 }
 
@@ -422,6 +474,7 @@ func parse(_ argv: [String]) -> Options {
     case "--hint-chars": options.hintChars = next(); if options.hintChars.count < 2 { usage() }
     case "--budget-ms": guard let n = Int(next()) else { usage() }; options.budgetMs = n
     case "--no-prune": options.prune = false
+    case "--focused": options.focused = true
     case "--enhanced": options.enhanced = true
     case "--prompt": options.prompt = true
     case "--delay-ms": guard let n = Int(next()) else { usage() }; options.delayMs = n
@@ -551,6 +604,153 @@ func flipY(_ rect: CGRect) -> CGRect {
   return CGRect(x: rect.minX, y: base - rect.maxY, width: rect.width, height: rect.height)
 }
 
+// MARK: - Windows
+
+/// What is left of `rect` once `cover` is taken out of it: up to four bands, and nothing at all when
+/// the cover swallows it. Rectangles rather than a region type, because everything downstream is one
+/// -- a candidate's box, the rect handed to screencapture -- and a region would only have to be
+/// turned back into these to be used.
+func subtract(_ rect: CGRect, _ cover: CGRect) -> [CGRect] {
+  let hit = rect.intersection(cover)
+  if hit.isNull || hit.isEmpty { return [rect] }
+  var pieces: [CGRect] = []
+  if hit.minY > rect.minY { pieces.append(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: hit.minY - rect.minY)) }
+  if hit.maxY < rect.maxY { pieces.append(CGRect(x: rect.minX, y: hit.maxY, width: rect.width, height: rect.maxY - hit.maxY)) }
+  if hit.minX > rect.minX { pieces.append(CGRect(x: rect.minX, y: hit.minY, width: hit.minX - rect.minX, height: hit.height)) }
+  if hit.maxX < rect.maxX { pieces.append(CGRect(x: hit.maxX, y: hit.minY, width: rect.maxX - hit.maxX, height: hit.height)) }
+  return pieces
+}
+
+/// The parts of `rect` that no window in `covers` is drawn over. Empty is a box that would
+/// photograph something else entirely.
+func exposed(_ rect: CGRect, under covers: [CGRect]) -> [CGRect] {
+  var pieces = [rect]
+  for cover in covers {
+    guard pieces.contains(where: { $0.intersects(cover) }) else { continue }
+    pieces = pieces.flatMap { subtract($0, cover) }
+    if pieces.isEmpty { return [] }
+    // A deep stack of overlapping windows would split the remainder without bound. Past the cap the
+    // answer is "covered" rather than a cheaper approximation of what is left: every caller uses
+    // this to decide what may be photographed, and the only safe way to be wrong about that is to
+    // offer too little. The cap is high enough that reaching it means a window under dozens of
+    // others, which had nothing worth hinting anyway.
+    if pieces.count > 256 { return [] }
+  }
+  return pieces
+}
+
+/// One on-screen window worth walking: the tree to walk, the box it occupies, and the boxes of the
+/// windows drawn over it.
+struct WindowTarget {
+  let app: NSRunningApplication
+  let element: AXUIElement
+  /// In global top-left coordinates, the space both the window server and the tree report in.
+  let frame: CGRect
+  let occluders: [CGRect]
+}
+
+/// How far apart two frames are, added up corner by corner. Used only to pair a window the window
+/// server named with the one the tree calls the same thing.
+func frameDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+  abs(a.minX - b.minX) + abs(a.minY - b.minY) + abs(a.width - b.width) + abs(a.height - b.height)
+}
+
+/// The windows on screen, front to back, with the ones nothing can be seen of dropped and the rest
+/// paired with the accessibility tree that describes them. `only` narrows it to one process.
+///
+/// The list comes from the window server rather than from the tree, because the tree does not know
+/// the stacking order and the window server does -- and because it answers before a single
+/// accessibility message has been sent, which is what makes the culling free. A desktop of forty
+/// on-screen windows is usually four with any pixels of their own; the other thirty-six are dropped
+/// here, and are never asked anything.
+func onScreenWindows(options: Options, only: pid_t?) -> (targets: [WindowTarget], culled: Int, unmatched: Int) {
+  let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+  let ownPid = ProcessInfo.processInfo.processIdentifier
+
+  // Front to back. Everything on screen occludes -- the menu bar, the Dock, a floating notification
+  // panel -- but only ordinary windows are hinted: a menu or a popover is drawn over the window it
+  // belongs to, so leaving it out of the targets masks that window rather than offering the menu as
+  // a region of its own.
+  var covers: [CGRect] = []
+  var wanted: [(pid: pid_t, frame: CGRect, occluders: [CGRect])] = []
+  var culled = 0
+  for entry in listed {
+    guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t,
+          let bounds = entry[kCGWindowBounds as String] as? [String: Any] else { continue }
+    var frame = CGRect.zero
+    CGRectMakeWithDictionaryRepresentation(bounds as CFDictionary, &frame)
+    let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
+    if alpha <= 0 || frame.isEmpty { continue }
+    let layer = (entry[kCGWindowLayer as String] as? Int) ?? 0
+    // axshot's own windows are never hinted -- the settings window and the shortcut sheet are not
+    // regions of anyone's work -- but they are drawn over what is behind them like anything else, so
+    // they still count as cover. The overlay is not one of them: it does not go up until the walk
+    // has finished, and the toast is dismissed before the walk starts.
+    if layer == 0, pid != ownPid, only == nil || only == pid {
+      let over = covers.filter { $0.intersects(frame) }
+      let open = exposed(frame, under: over)
+      if open.contains(where: { $0.width >= options.minSize && $0.height >= options.minSize }) {
+        wanted.append((pid, frame, over))
+      } else {
+        culled += 1
+      }
+    }
+    covers.append(frame)
+  }
+
+  // The window server names a window by a number the tree does not offer, so the two are paired on
+  // the frame they agree about. Two windows of one app can sit on the same box, so a tree already
+  // spoken for is not offered again; a window nothing matches is dropped rather than guessed at.
+  var targets: [WindowTarget] = []
+  var trees: [pid_t: [(element: AXUIElement, frame: CGRect)]] = [:]
+  var applications: [pid_t: NSRunningApplication] = [:]
+  var taken = Set<ElementKey>()
+  var unmatched = 0
+  for window in wanted {
+    if trees[window.pid] == nil {
+      trees[window.pid] = []
+      guard let app = NSRunningApplication(processIdentifier: window.pid) else { unmatched += 1; continue }
+      applications[window.pid] = app
+      let appElement = AXUIElementCreateApplication(window.pid)
+      AXUIElementSetMessagingTimeout(appElement, 1)
+      // Chromium exposes nothing of the page until a client asks the application object for its
+      // role; that one read is the switch. The walk asks every element below it, which covers the
+      // rest.
+      _ = string(appElement, kAXRoleAttribute)
+      AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+      if options.enhanced {
+        AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+      }
+      trees[window.pid] = ((attribute(appElement, kAXWindowsAttribute) as? [AXUIElement]) ?? [])
+        .compactMap { element in
+          guard let frame = probe(element).frame, !frame.isEmpty else { return nil }
+          return (element, frame)
+        }
+    }
+    guard let app = applications[window.pid], let known = trees[window.pid] else { unmatched += 1; continue }
+    let match = known
+      .filter { !taken.contains(ElementKey(element: $0.element)) }
+      .min { frameDistance($0.frame, window.frame) < frameDistance($1.frame, window.frame) }
+    guard let match, frameDistance(match.frame, window.frame) <= 8 else { unmatched += 1; continue }
+    taken.insert(ElementKey(element: match.element))
+    targets.append(WindowTarget(app: app, element: match.element, frame: window.frame, occluders: window.occluders))
+  }
+  return (targets, culled, unmatched)
+}
+
+/// The one window `--focused` walks, with nothing over it and nothing beside it.
+func focusedTarget(_ app: NSRunningApplication, options: Options) -> WindowTarget? {
+  let appElement = AXUIElementCreateApplication(app.processIdentifier)
+  AXUIElementSetMessagingTimeout(appElement, 1)
+  _ = string(appElement, kAXRoleAttribute)
+  AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+  if options.enhanced {
+    AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+  }
+  guard let element = focusedWindow(appElement), let frame = probe(element).frame, !frame.isEmpty else { return nil }
+  return WindowTarget(app: app, element: element, frame: frame, occluders: [])
+}
+
 // MARK: - Candidates
 
 struct Candidate {
@@ -564,6 +764,11 @@ struct Candidate {
   let rect: CGRect
   let depth: Int
   let childCount: Int
+  /// Which of the walked windows this came out of. Two windows are two trees, so the nesting
+  /// collapse and the arrows both stay inside one of them: a box in the window behind that happens
+  /// to contain a box in the window in front is not its parent, and stepping between them is not a
+  /// step across a tree.
+  let window: Int
 
   var area: CGFloat { rect.width * rect.height }
 
@@ -577,18 +782,36 @@ struct Candidate {
 
 final class Walk {
   let clip: CGRect
+  /// The windows drawn over this one, in the same coordinates as `clip`.
+  let occluders: [CGRect]
+  /// Which window is being walked, stamped onto every candidate it finds.
+  let window: Int
   let options: Options
+  /// Shared with every other window's walk: what the budget protects is the keyboard the overlay is
+  /// about to take, and that is one keyboard however many trees are being read to fill it.
   let deadline: Date
   var visited = 0
   var timedOut = false
   var path = Set<ElementKey>()
   var found: [Candidate] = []
+  /// How long this window's walk took on its own. With the windows walked at once these overlap, so
+  /// the dump adding up to more than its own total is the concurrency being visible rather than an
+  /// arithmetic error.
+  var ms = 0
   let maxDepth = 256
 
-  init(clip: CGRect, options: Options) {
+  init(clip: CGRect, occluders: [CGRect], window: Int, deadline: Date, options: Options) {
     self.clip = clip
+    self.occluders = occluders
+    self.window = window
+    self.deadline = deadline
     self.options = options
-    deadline = Date().addingTimeInterval(Double(options.budgetMs) / 1000)
+  }
+
+  func measure(_ element: AXUIElement) {
+    let start = Date()
+    run(element)
+    ms = millis(since: start)
   }
 
   /// Pre-order, so an outer box is recorded before the inner boxes that repeat it and the dedupe
@@ -607,13 +830,23 @@ final class Walk {
 
     let info = probe(element)
     if let frame = info.frame, !frame.isEmpty {
-      let visible = frame.intersection(clip)
-      if visible.isNull || visible.isEmpty {
-        // Nothing of this element is on screen. Its children are laid out inside it, so neither is
-        // anything below it -- which is what keeps a long conversation from being walked in full.
-        if options.prune { return }
-      } else if visible.width >= options.minSize && visible.height >= options.minSize {
-        found.append(Candidate(element: element, role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count))
+      // What of this element could be photographed: the part inside its own window, less whatever a
+      // window in front is drawn over. One rule twice -- a box is worth hinting only where the
+      // pixels in it are this element's -- and it crops rather than rejects both times, so an
+      // element the screen edge or the window in front takes half of is still offered on the half
+      // that is there. The largest remaining piece, since a window covered across its middle leaves
+      // more than one and the biggest is the one worth a keystroke.
+      let onWindow = frame.intersection(clip)
+      let open = onWindow.isNull || onWindow.isEmpty ? [] : exposed(onWindow, under: occluders)
+      if let visible = open.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+        if visible.width >= options.minSize && visible.height >= options.minSize {
+          found.append(Candidate(element: element, role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count, window: window))
+        }
+      } else if options.prune {
+        // Nothing of this element can be seen at all -- off the screen, or under another window.
+        // Its children are laid out inside it, so neither can anything below it, and not entering
+        // the subtree is what keeps a long conversation walkable and a covered window unwalked.
+        return
       }
     }
 
@@ -719,21 +952,32 @@ let nestingRatio: CGFloat = 1.5
 /// The tree is mostly nested containers that repeat their child's box, and hinting them raw stacks a
 /// dozen hints on the same pixels. Three passes: drop exact repeats, drop wrappers that say nothing
 /// and hold one child, then walk largest-first and drop anything an already-kept box swallows
-/// without growing much. Document order is restored at the end so the hints read down the page.
+/// without growing much. Document order is restored at the end so the hints read down the page --
+/// front window first, since that is the order the windows were walked in.
+///
+/// All three compare within one window. The cap on hints is the only thing that is shared, which is
+/// what makes it the cap it says it is; a box in the window behind that a box in the window in front
+/// happens to sit inside is not a repeat of it, and collapsing the two would take away the region
+/// the second window was walked for.
+///
+/// Largest-first spends that cap on the front window without being told to. A window behind is
+/// partly covered by definition, so its boxes are the clipped ones and rank below the whole ones in
+/// front: a crowded desktop cut to twenty hints kept fourteen of them in the front window.
 func filter(_ candidates: [Candidate], max limit: Int) -> [Candidate] {
   var seen = Set<String>()
   var distinct: [(offset: Int, candidate: Candidate)] = []
   for (offset, candidate) in candidates.enumerated() {
     if candidate.generic && candidate.childCount <= 1 { continue }
-    if !seen.insert(gridKey(candidate.rect)).inserted { continue }
-    if distinct.contains(where: { nearlyEqual($0.candidate.rect, candidate.rect) }) { continue }
+    if !seen.insert("\(candidate.window):\(gridKey(candidate.rect))").inserted { continue }
+    if distinct.contains(where: { $0.candidate.window == candidate.window && nearlyEqual($0.candidate.rect, candidate.rect) }) { continue }
     distinct.append((offset, candidate))
   }
 
   var kept: [(offset: Int, candidate: Candidate)] = []
   for entry in distinct.sorted(by: { $0.candidate.area > $1.candidate.area }) {
     let swallowed = kept.contains { outer in
-      outer.candidate.rect.insetBy(dx: -2, dy: -2).contains(entry.candidate.rect)
+      outer.candidate.window == entry.candidate.window
+        && outer.candidate.rect.insetBy(dx: -2, dy: -2).contains(entry.candidate.rect)
         && outer.candidate.area < entry.candidate.area * nestingRatio
     }
     if swallowed { continue }
@@ -747,6 +991,12 @@ func filter(_ candidates: [Candidate], max limit: Int) -> [Candidate] {
 /// gets mostly single keystrokes, and nothing needs more than two until there are 197 of them.
 /// The short labels are the low numbers and the long ones start above them, so no short label is
 /// ever a prefix of a long one and a complete label can be acted on the moment it is typed.
+///
+/// Which also settles who gets them once several windows are hinted, without anything having to
+/// decide it: the candidates are in front-to-back order, so the low numbers are the front window's
+/// and the single keystrokes go there. Hinting the whole screen costs the front window some of them
+/// -- seven rather than twelve, on a desktop of four exposed windows -- and costs it none of the
+/// shortest ones.
 func hintLabels(count: Int, alphabet: String) -> [String] {
   let letters = Array(alphabet)
   let base = letters.count
@@ -1590,10 +1840,12 @@ final class Session {
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
   var view: HintView!
-  /// The focused window's element, which is the tree a dragged region reads its text out of. A
-  /// custom region has no element of its own, so it takes the window's and lets the clip do the
-  /// selecting -- which is what `regionText` was already doing with every candidate it was handed.
-  var window: AXUIElement?
+  /// The windows that were walked, front to back. A dragged region has no element of its own, so it
+  /// takes the tree of the window it landed in and lets the clip do the selecting -- which is what
+  /// `regionText` was already doing with every candidate it was handed. With more than one window
+  /// hinted it also has to say *which*, or the outcome would name whichever app happened to be in
+  /// front of a rectangle drawn over some other one.
+  var windows: [(element: AXUIElement, frame: CGRect)] = []
   /// How many regions have been held, so an answer that arrives late can tell whether it is still
   /// about what is on screen. An index would not do it: a dragged region has none.
   var holds = 0
@@ -1870,12 +2122,15 @@ final class Session {
       dragAnchor = nil
       // A press and release that went nowhere is a click, and a click is not a region: the hints
       // come back rather than a few pixels nobody meant to select being held.
-      guard let window, !rect.isNull, rect.width >= minimumDrag, rect.height >= minimumDrag else {
+      // Front to back, so a rectangle over two windows belongs to the one drawn on top -- which is
+      // the one whose pixels it is about to photograph.
+      let landed = windows.firstIndex { $0.frame.intersects(rect) }
+      guard let landed, !rect.isNull, rect.width >= minimumDrag, rect.height >= minimumDrag else {
         view.selection = nil
         refresh()
         return
       }
-      hold(Candidate(element: window, role: "custom", subrole: "", label: "", rect: rect, depth: 0, childCount: 0), at: nil)
+      hold(Candidate(element: windows[landed].element, role: "custom", subrole: "", label: "", rect: rect, depth: 0, childCount: 0, window: landed), at: nil)
     default: break
     }
   }
@@ -2233,11 +2488,16 @@ final class Session {
   /// spend a keystroke on the same region drawn bigger or smaller. The walk is pre-order, so a
   /// candidate's descendants are exactly the run that follows it while the depth stays greater, and
   /// its ancestors are the entries before it that keep setting a new shallowest depth.
+  ///
+  /// It stops at the window it started in, as all four do. Document order across two windows says
+  /// only which was in front, and a key that walks a tree should not step out of the tree to a
+  /// region somewhere else on the screen -- the hints are how another window is reached.
   func step(from index: Int, by offset: Int) {
+    let window = candidates[index].window
     let depth = candidates[index].depth
     var shallowest = depth
     var next = index + offset
-    while candidates.indices.contains(next) {
+    while candidates.indices.contains(next), candidates[next].window == window {
       let other = candidates[next].depth
       if offset > 0 {
         if other > depth { next += offset; continue }  // a descendant
@@ -2248,7 +2508,7 @@ final class Session {
       }
       break
     }
-    guard candidates.indices.contains(next) else { NSSound.beep(); return }
+    guard candidates.indices.contains(next), candidates[next].window == window else { NSSound.beep(); return }
     descent = []
     hold(next)
   }
@@ -2260,7 +2520,7 @@ final class Session {
   func ascend(from index: Int) {
     let inner = candidates[index].rect
     let parent = candidates.indices
-      .filter { $0 != index && candidates[$0].rect.insetBy(dx: -2, dy: -2).contains(inner) && candidates[$0].area > candidates[index].area }
+      .filter { $0 != index && candidates[$0].window == candidates[index].window && candidates[$0].rect.insetBy(dx: -2, dy: -2).contains(inner) && candidates[$0].area > candidates[index].area }
       .min { candidates[$0].area < candidates[$1].area }
     guard let parent else { NSSound.beep(); return }
     descent.append(index)
@@ -2275,6 +2535,7 @@ final class Session {
   func descend() {
     if let child = descent.popLast() { hold(child); return }
     guard let index = heldIndex, candidates.indices.contains(index + 1),
+          candidates[index + 1].window == candidates[index].window,
           candidates[index + 1].depth > candidates[index].depth else { NSSound.beep(); return }
     hold(index + 1)
   }
@@ -2689,63 +2950,89 @@ func runSession(_ options: Options) -> Outcome {
   // attempt is left to be the thing that decides.
   if !options.dump && !Permissions.screenRecording.granted { Permissions.screenRecording.request() }
 
-  let target: NSRunningApplication?
+  // --bundle and --pid narrow which windows are hinted; they never narrow what occludes them, since
+  // a window in front is in front whoever owns it.
+  var only: pid_t?
   if options.pid != 0 {
-    target = NSRunningApplication(processIdentifier: options.pid)
+    guard NSRunningApplication(processIdentifier: options.pid) != nil else {
+      return Outcome(code: 3, line: "app=none total_ms=\(millis(since: start))")
+    }
+    only = options.pid
   } else if let bundleId = options.bundleId {
-    target = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first
+    guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first else {
+      return Outcome(code: 3, line: "app=none total_ms=\(millis(since: start))")
+    }
+    only = app.processIdentifier
+  }
+
+  let targets: [WindowTarget]
+  var culled = 0
+  var unmatched = 0
+  if options.focused {
+    let app = only.flatMap { NSRunningApplication(processIdentifier: $0) } ?? NSWorkspace.shared.frontmostApplication
+    guard let app else {
+      return Outcome(code: 3, line: "app=none total_ms=\(millis(since: start))")
+    }
+    guard let window = focusedTarget(app, options: options) else {
+      return Outcome(code: 6, line: "app=\(app.localizedName ?? "?") windows=0 total_ms=\(millis(since: start))")
+    }
+    targets = [window]
   } else {
-    target = NSWorkspace.shared.frontmostApplication
+    (targets, culled, unmatched) = onScreenWindows(options: options, only: only)
   }
-  guard let app = target else {
-    return Outcome(code: 3, line: "app=none total_ms=\(millis(since: start))")
+  guard !targets.isEmpty else {
+    return Outcome(code: 6, line: "windows=0 culled=\(culled) unmatched=\(unmatched) total_ms=\(millis(since: start))")
   }
-  let name = app.localizedName ?? app.bundleIdentifier ?? "?"
-
-  let appElement = AXUIElementCreateApplication(app.processIdentifier)
-  AXUIElementSetMessagingTimeout(appElement, 1)
-  // Chromium exposes nothing of the page until a client asks the application object for its role;
-  // that one read is the switch. The walk asks every element below it, which covers the rest.
-  _ = string(appElement, kAXRoleAttribute)
-  AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-  if options.enhanced {
-    AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+  func name(_ target: WindowTarget) -> String {
+    target.app.localizedName ?? target.app.bundleIdentifier ?? "?"
   }
 
-  guard let windowElement = focusedWindow(appElement), let windowFrame = probe(windowElement).frame, !windowFrame.isEmpty else {
-    return Outcome(code: 6, line: "app=\(name) windows=0 total_ms=\(millis(since: start))")
-  }
-
-  // The window can hang off the edge of its display; only the part on a screen can be captured.
+  // A window can hang off the edge of its display; only the part on a screen can be captured.
   let screens = NSScreen.screens
   guard let primary = screens.first else {
     return Outcome(code: 6, line: "screens=0 total_ms=\(millis(since: start))")
   }
   let flipBase = primary.frame.maxY
   let screenArea = screens.map { flipY($0.frame) }.reduce(CGRect.null) { $0.union($1) }
-  let clip = windowFrame.intersection(screenArea)
 
+  // Each window is a different process answering its own stream of accessibility messages, so
+  // walking them at once overlaps the waiting rather than the work: it costs the slowest app rather
+  // than the sum of them. Every walk has its own object and touches nothing else's, and the array
+  // holding them is only ever read, so the one thing they share is the deadline.
   let walkStart = Date()
-  let walk = Walk(clip: clip, options: options)
-  walk.run(windowElement)
+  let deadline = walkStart.addingTimeInterval(Double(options.budgetMs) / 1000)
+  let walks = targets.enumerated().map { index, target in
+    Walk(clip: target.frame.intersection(screenArea), occluders: target.occluders, window: index, deadline: deadline, options: options)
+  }
+  if walks.count > 1 {
+    DispatchQueue.concurrentPerform(iterations: walks.count) { walks[$0].measure(targets[$0].element) }
+  } else {
+    walks[0].measure(targets[0].element)
+  }
   let walkMs = millis(since: walkStart)
-  let candidates = filter(walk.found, max: options.maxHints)
+  let visited = walks.reduce(0) { $0 + $1.visited }
+  let boxes = walks.reduce(0) { $0 + $1.found.count }
+  let candidates = filter(walks.flatMap { $0.found }, max: options.maxHints)
   let labels = hintLabels(count: candidates.count, alphabet: options.hintChars)
 
   if options.dump {
-    print("app=\(name) pid=\(app.processIdentifier) window=(\(Int(windowFrame.minX)),\(Int(windowFrame.minY)) \(Int(windowFrame.width))x\(Int(windowFrame.height)))")
-    print("visited=\(walk.visited) boxes=\(walk.found.count) candidates=\(candidates.count) walk_ms=\(walkMs)\(walk.timedOut ? " TIMED OUT" : "")")
+    print("windows=\(targets.count) culled=\(culled) unmatched=\(unmatched)")
+    print("visited=\(visited) boxes=\(boxes) candidates=\(candidates.count) walk_ms=\(walkMs)\(walks.contains { $0.timedOut } ? " TIMED OUT" : "")")
+    for (index, target) in targets.enumerated() {
+      let frame = target.frame
+      print("  w\(index) \(name(target)) pid=\(target.app.processIdentifier) (\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))) over=\(target.occluders.count) visited=\(walks[index].visited) boxes=\(walks[index].found.count) walk_ms=\(walks[index].ms)")
+    }
     for (index, candidate) in candidates.enumerated() {
       let box = candidate.rect
       let subrole = candidate.subrole.isEmpty ? "" : " \(candidate.subrole)"
       let label = candidate.label.isEmpty ? "" : " \"\(candidate.label.prefix(60))\""
-      print("  \(labels[index]) \(candidate.role)\(subrole) depth=\(candidate.depth) (\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height)))\(label)")
+      print("  \(labels[index]) w\(candidate.window) \(candidate.role)\(subrole) depth=\(candidate.depth) (\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height)))\(label)")
     }
     return Outcome(code: 0, line: "")
   }
 
   guard !candidates.isEmpty else {
-    return Outcome(code: 4, line: "app=\(name) visited=\(walk.visited) candidates=0 walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 4, line: "windows=\(targets.count) visited=\(visited) candidates=0 walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   let overlayFrame = screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
@@ -2779,7 +3066,7 @@ func runSession(_ options: Options) -> Outcome {
   session.budgetMs = options.budgetMs
   session.delayMs = options.delayMs
   session.cancelChord = options.cancelChord
-  session.window = windowElement
+  session.windows = targets.map { (element: $0.element, frame: $0.frame) }
   session.screenArea = screenArea
   session.flipBase = flipBase
   session.overlayOrigin = overlayFrame.origin
@@ -2797,7 +3084,7 @@ func runSession(_ options: Options) -> Outcome {
     userInfo: nil)
   else {
     overlay.orderOut(nil)
-    return Outcome(code: 2, line: "app=\(name) tap=failed total_ms=\(millis(since: start))")
+    return Outcome(code: 2, line: "windows=\(targets.count) tap=failed total_ms=\(millis(since: start))")
   }
   let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
   CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
@@ -2824,32 +3111,32 @@ func runSession(_ options: Options) -> Outcome {
     let text = session.copyText ?? regionText(chosen, budgetMs: options.budgetMs)
     let box = chosen.rect
     guard !text.isEmpty else {
-      return Outcome(code: 13, line: "app=\(name) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
+      return Outcome(code: 13, line: "app=\(name(targets[chosen.window])) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
     }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-    return Outcome(code: 0, line: "app=\(name) role=\(chosen.role) copy=\(session.selecting ? "selection" : session.edited ? "edited" : session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role) copy=\(session.selecting ? "selection" : session.edited ? "edited" : session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   // Give the window server a beat to composite the overlay away before the shutter.
   CFRunLoopRunInMode(.defaultMode, Double(options.delayMs) / 1000, false)
 
   guard let chosen = session.chosen else {
-    return Outcome(code: 11, line: "app=\(name) cancelled=true\(session.settings ? " settings=true" : "") walk_ms=\(walkMs) total_ms=\(millis(since: start))", settings: session.settings)
+    return Outcome(code: 11, line: "windows=\(targets.count) cancelled=true\(session.settings ? " settings=true" : "") walk_ms=\(walkMs) total_ms=\(millis(since: start))", settings: session.settings)
   }
   let box = chosen.rect
   let destination: Destination = session.toClipboard ? .clipboard : options.destination
   let path = destination.resolve()
   guard capture(box, to: path) else {
     let hint = CGPreflightScreenCaptureAccess() ? "" : " screen_recording=false"
-    return Outcome(code: 12, line: "app=\(name) capture=failed\(hint) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
+    return Outcome(code: 12, line: "app=\(name(targets[chosen.window])) capture=failed\(hint) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
   }
 
   // Read back for the toast, which only a shot with a file behind it gets.
   let image = options.toast ? path.flatMap({ NSImage(contentsOfFile: $0) }) : nil
 
   let label = chosen.label.isEmpty ? "" : " label=\"\(chosen.label.prefix(60))\""
-  return Outcome(code: 0, line: "app=\(name) role=\(chosen.role)\(label) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) visited=\(walk.visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")", image: image, path: path)
+  return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role)\(label) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) windows=\(targets.count) candidates=\(candidates.count) visited=\(visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")", image: image, path: path)
 }
 
 // MARK: - Hotkey
@@ -3976,15 +4263,15 @@ final class DriveFrame {
     pointer.orderFrontRegardless()
 
     deadline = Date().addingTimeInterval(Self.ceiling)
-    follow()
+    layout()
     trackPointer()
-    // Two ways of asking, because they answer different halves. The notification is what makes a
-    // switch between applications look instant; the timer is for a window moved, resized or replaced
-    // inside the one that is already frontmost, which nothing posts. Both stop with the burst -- an
-    // idle app is back to costing nothing, which is the whole reason the tree is not cached either.
-    watch = NSWorkspace.shared.notificationCenter.addObserver(
-      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
-        self?.follow()
+    // The one thing that moves the band now. A screen coming or going, or changing resolution, is
+    // the only event that changes where the edge of the desktop is -- where a window's edge changed
+    // with every activation, every drag and every resize, none of which this has to hear about any
+    // more.
+    watch = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+        self?.layout()
       }
     // Mouse-moved is not posted to an app that is not frontmost, so this is a global monitor and not
     // a window's own tracking: the app is never frontmost, which is the whole of why it can watch.
@@ -3995,7 +4282,6 @@ final class DriveFrame {
     timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
       guard let self else { return }
       if Date() >= self.deadline { DriveFrame.end(); return }
-      self.follow()
       // The monitor catches every move a person makes; this catches the pointer being put somewhere
       // rather than moved there, which posts nothing at all.
       self.trackPointer()
@@ -4011,37 +4297,22 @@ final class DriveFrame {
                                    y: at.y - 7 - Self.halo.height / 2))
   }
 
-  /// Where the band goes: around the frontmost window, read the way a capture reads it.
-  private func follow() {
-    view.box = box().map { $0.offsetBy(dx: -view.origin.x, dy: -view.origin.y) }
-  }
-
-  private func box() -> CGRect? {
-    let area = NSScreen.screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
-    guard let app = NSWorkspace.shared.frontmostApplication else { return area }
-    // Our own windows are read off AppKit, which already has them in the space this draws in. The
-    // settings window is one a driven burst opens, and asking the accessibility API about the
-    // process it is running in is asking the app to be trusted to inspect itself.
-    if app.processIdentifier == getpid() {
-      return (NSApp.keyWindow ?? NSApp.mainWindow)?.frame ?? area
-    }
-    let element = AXUIElementCreateApplication(app.processIdentifier)
-    // The frame is redrawn five times a second and an app that has stopped answering must not take
-    // the drawing down with it. Deliberately no AXManualAccessibility here: that switch is what
-    // turns a Chromium app's accessibility engine on, and a burst is not a reason to leave it on --
-    // a window's own frame is exposed without it, and only the content inside needs asking.
-    AXUIElementSetMessagingTimeout(element, 1)
-    guard let window = focusedWindow(element), let frame = probe(window).frame, !frame.isEmpty else {
-      // An application frontmost with no window open -- the Finder on a bare desktop -- still has
-      // the machine, so the band says so around the screen rather than going out.
-      return area
-    }
-    return flipY(frame).intersection(area)
+  /// Where the band goes: one around each screen. Every screen and not the bounding box of them,
+  /// because two displays that are not the same height leave the box running through dead space at
+  /// the top of the shorter one -- a band nobody sees, and no band along the edge that is there.
+  private func layout() {
+    let screens = NSScreen.screens
+    let area = screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
+    guard !area.isNull else { return }
+    window.setFrame(area, display: true)
+    view.frame = CGRect(origin: .zero, size: area.size)
+    view.origin = area.origin
+    view.boxes = screens.map { $0.frame }
   }
 
   private func close() {
     timer?.invalidate()
-    if let watch { NSWorkspace.shared.notificationCenter.removeObserver(watch) }
+    if let watch { NotificationCenter.default.removeObserver(watch) }
     if let mouse { NSEvent.removeMonitor(mouse) }
     window.orderOut(nil)
     pointer.orderOut(nil)
@@ -4051,25 +4322,24 @@ final class DriveFrame {
   }
 }
 
-/// The band itself, drawn as layers rather than by hand, because the one thing it has to agree with
-/// is the shape of the window underneath it. macOS rounds a window with a continuous corner -- a
-/// squircle, fuller through the diagonal than a circle of the same radius -- and `NSBezierPath` has
-/// no such curve, so a hand-drawn band diverges from the window edge at exactly the four places it
-/// is most looked at. `cornerCurve = .continuous` is that curve, and a layer is the only thing that
-/// offers it.
+/// The band itself: one square-cornered frame per screen, drawn as layers.
+///
+/// Square, because a screen is not a window. The band used to trace whatever window was frontmost,
+/// and macOS rounds a window with a continuous corner -- a squircle, fuller through the diagonal
+/// than a circle of the same radius -- which no `NSBezierPath` draws; that is what the layers and
+/// their `cornerCurve = .continuous` were for, at a radius of 16 measured against a real window row
+/// by row. A display's corner is a different shape and not one anything reports. Where the panel
+/// rounds it, the panel's own mask clips the band, and a curve guessed at here would compete with
+/// that mask rather than match it -- so the band states the bounds it knows and lets the corner
+/// belong to the hardware. The layers stay because the inward falloff is still drawn as concentric
+/// rings, and the radius measurement is kept above in case a band ever has to follow a window again.
 ///
 /// Not an accessibility element and deliberately so: it is a mark drawn over somebody else's window
 /// rather than a control, it answers no key, and a borderless window sitting over every app is the
 /// last thing a reader should have to step through to get past. The overlay is out of the tree for
 /// the same reason and says as much in the header.
 final class DriveFrameView: NSView {
-  /// The system's own window corner, in points. Measured rather than assumed: a plain AppKit window
-  /// was photographed against the desktop and its arc compared, row by row, against continuous
-  /// corners drawn at 10 through 20. Sixteen matched to under a device pixel, where fourteen and
-  /// eighteen were an order of magnitude further out. It is an OS constant and not an API, so it is
-  /// worth re-measuring the same way if the system's window shape changes under it.
-  private static let radius: CGFloat = 16
-  /// The solid band on the window's own edge.
+  /// The solid band on the screen's own edge.
   private static let band: CGFloat = 4
   /// The shadow cast inward from it, as concentric borders rather than as a blur. A blurred shadow
   /// needs a path to be cast from and the only exact one here is a curve no path can hold, so the
@@ -4080,21 +4350,28 @@ final class DriveFrameView: NSView {
 
   /// The frame window's own origin, so a box in screen coordinates can be drawn in view ones.
   var origin = CGPoint.zero
-  var box: CGRect? {
-    didSet { if box != oldValue { place() } }
+  /// One box per screen, in screen coordinates.
+  var boxes: [CGRect] = [] {
+    didSet { if boxes != oldValue { place() } }
   }
 
-  private let edge = CALayer()
-  private var glow: [CALayer] = []
+  /// Built to match the number of screens rather than up front, since that is not known until the
+  /// first layout and can change under a burst. Never taken down again -- a display unplugged and
+  /// replugged inside two minutes would otherwise rebuild them, and a hidden layer costs nothing.
+  private var bands: [(edge: CALayer, glow: [CALayer])] = []
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
+  }
+
+  private func makeBand() -> (edge: CALayer, glow: [CALayer]) {
     let pink = HintStyle.pink.line
+    let edge = CALayer()
     edge.borderColor = pink.cgColor
     edge.borderWidth = Self.band
-    edge.cornerCurve = .continuous
     layer?.addSublayer(edge)
+    var glow: [CALayer] = []
     for i in 0..<Self.steps {
       let ring = CALayer()
       // Quadratic, so the shadow leaves the band quickly and then trails off, which is what an inset
@@ -4102,11 +4379,10 @@ final class DriveFrameView: NSView {
       let fade = pow(1 - CGFloat(i) / CGFloat(Self.steps), 2)
       ring.borderColor = pink.withAlphaComponent(0.34 * fade).cgColor
       ring.borderWidth = Self.step
-      ring.cornerCurve = .continuous
       layer?.addSublayer(ring)
       glow.append(ring)
     }
-    place()
+    return (edge, glow)
   }
 
   required init?(coder: NSCoder) { nil }
@@ -4120,22 +4396,21 @@ final class DriveFrameView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    guard let box else {
-      edge.isHidden = true
-      glow.forEach { $0.isHidden = true }
-      return
-    }
-    let rect = box.offsetBy(dx: -origin.x, dy: -origin.y)
-    edge.isHidden = false
-    edge.frame = rect
-    edge.cornerRadius = Self.radius
-    for (i, ring) in glow.enumerated() {
-      // Concentric: inset by d, the corner is d smaller, and past the radius it is a corner no
-      // longer -- which is what insetting a rounded rect that far actually leaves.
-      let inset = Self.band + CGFloat(i) * Self.step
-      ring.isHidden = false
-      ring.frame = rect.insetBy(dx: inset, dy: inset)
-      ring.cornerRadius = max(0, Self.radius - inset)
+    while bands.count < boxes.count { bands.append(makeBand()) }
+    for (index, band) in bands.enumerated() {
+      guard index < boxes.count else {
+        band.edge.isHidden = true
+        band.glow.forEach { $0.isHidden = true }
+        continue
+      }
+      let rect = boxes[index].offsetBy(dx: -origin.x, dy: -origin.y)
+      band.edge.isHidden = false
+      band.edge.frame = rect
+      for (i, ring) in band.glow.enumerated() {
+        let inset = Self.band + CGFloat(i) * Self.step
+        ring.isHidden = false
+        ring.frame = rect.insetBy(dx: inset, dy: inset)
+      }
     }
   }
 }

@@ -182,10 +182,17 @@ explained where it is implemented.
 - **Nothing is cached between captures.** The tree is walked on demand every time. A resident cache
   would save a fraction of what the capture alone costs, and would keep every Chromium app's
   accessibility engine switched on for as long as the app runs.
-- **Only regions that are actually on screen are offered**, clipped to the focused window. An
-  element scrolled out of view has a frame that would photograph something else. A region dragged
-  by hand is the exception and is clipped to nothing but the desktop: a rectangle drawn around what
-  someone is looking at is already what is on screen.
+- **Only regions that are actually on screen are offered**, clipped to their own window and to
+  whatever no window in front is drawn over. An element scrolled out of view, or behind another
+  window, has a frame that would photograph something else. Both crop rather than reject: half a
+  sidebar is still half a sidebar's pixels. A region dragged by hand is the exception and is clipped
+  to nothing but the desktop: a rectangle drawn around what someone is looking at is already what is
+  on screen.
+- **Every window with pixels of its own is hinted, not just the front one**, and they are walked at
+  once. Raising a window to capture it changes what is being captured, which is the whole reason to
+  reach one by hint. The window server culls the covered windows before any accessibility message is
+  sent, which on a crowded desktop is most of them; what survives is a handful of separate processes,
+  and waiting on those one at a time is waiting the machine did not have to do.
 - **Only text that was on screen is copied.** The tree carries names written for screen readers
   alongside the words a person can read, and no attribute separates them — the same field holds a
   button's visible label and an icon's stand-in name — so the test is whether the text would have
