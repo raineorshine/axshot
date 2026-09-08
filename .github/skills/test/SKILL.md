@@ -36,8 +36,11 @@ inside the lock.
 | `.claude/axshot-test.lock/` | the mutex and the pre-test snapshot | Held only while actually testing. |
 
 **Acquire late, release fast.** Compiling, `--dump` against another app, and reading the candidate
-list need no lock — `--dump` never draws an overlay and never touches the installed app. Take the
-lock only once you are about to put a build in the live slot.
+list need no lock — `--dump` never draws an overlay and never touches the installed app. Neither does
+photographing a rect it printed: `screencapture -x -o -R x,y,w,h` answers whether a computed region
+frames what it claims to, which is most of what a filter change is judged on and none of it needs the
+overlay, the keyboard or the live slot. Take the lock only once you are about to put a build in
+it.
 
 ## Procedure
 

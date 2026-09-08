@@ -127,6 +127,18 @@ whole of the repair, and a shifted punctuation key is not a case change. `keystr
 character and never reaches the repair. Assert an edit with letters, and read a stray comma in the
 result as the driver rather than as the caret.
 
+A label read from `--dump` is not the label the session will use. They are two walks of a tree that
+moves, and anything re-laying out between them renumbers the hints — a clock ticking over is enough.
+The typed label is still *a* valid label, so a region is held, the shutter fires and the file is of
+something else entirely: nothing in the run says the target moved. Aim at something that does not
+redraw, and check what came back rather than what was asked for.
+
+Which is the reason to drive `bin/axshot --out` rather than the hotkey whenever the question is
+*which* region was captured. Its outcome line names the app, the role and the rect actually held, and
+the instance running from the menu bar prints that nowhere. A rect alone stopped being enough once
+several windows are hinted at once — the app name on that line is what says the shot came from the
+window you meant.
+
 Wait for the overlay rather than for a few seconds. It is not up until the walk finishes, a key sent
 before that goes to the target app, and how long the walk takes belongs to the window it was pointed
 at — a page that took two seconds once will not the next time. The overlay is a window, so ask the
