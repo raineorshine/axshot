@@ -3,8 +3,10 @@
 // A region worth capturing -- a sidebar, a message, a diff panel, a single button -- is already
 // described in the app's accessibility tree, with a frame that can be read. axshot walks the
 // focused window's tree, keeps every element whose box is actually visible, overlays a Surfingkeys
-// style hint on each, and captures the one whose hint you type. No dragging, no coordinates, and
-// the region is snapped to a real element rather than to wherever the pointer happened to stop.
+// style hint on each, and captures the one whose hint you type. Nothing is dragged and no
+// coordinates are typed: the region snaps to a real element rather than to wherever the pointer
+// happened to stop -- and where the tree describes nothing to snap to, a rectangle can still be
+// drawn by hand.
 //
 // It runs as a menu bar app holding a global hotkey. Resident, but only as a listener: an idle
 // hotkey costs nothing, and the tree is still walked on demand at each invocation rather than kept
@@ -155,10 +157,10 @@
 // first thing tried on it. Click to place the caret, drag to select, twice for the run between the
 // spaces either side, three times for the lot. The click arrives through the same tap the keys do
 // rather than through the window, which is what keeps it off the one thing the app must not do: the
-// overlay ignores the mouse, and a panel that accepted a click would activate the app and redraw the
-// target's title bar inactive. While a box is up the overlay answers every click, not only the ones
-// that land on it -- a click that missed by a few points would otherwise go to a window the mask is
-// hiding. With no box up nothing changes, and a click goes through as it always has.
+// overlay ignores the mouse, and a window that accepted a click would activate the app and redraw
+// the target's title bar inactive. While a box is up the overlay answers every click, not only the
+// ones that land on it -- a click that missed by a few points would otherwise go to a window the
+// mask is hiding. With no box up the click draws a region instead.
 //
 // The arrows carry the modifiers they carry in every other field, because a box that looked like one
 // and moved a character at a time under Option would be a box that lied about what it was: Option or
@@ -206,6 +208,59 @@
 // the arrows do this, since HJKL are still hints until something is held. It is also the one place
 // Down has no ascent to retrace, so there it falls back to the held region's first child in document
 // order; without that the entry point would only ever lead outwards.
+//
+// A region can also be drawn by hand, for what the tree does not describe: a slide, a video, a
+// corner of a canvas, half a paragraph, an app whose accessibility is one box the size of its
+// window. Press the left button anywhere and drag -- the mask follows the rectangle as it is made,
+// and letting go holds it exactly as a hint would have, so Return, the two copy chords, the join
+// and the transcription all read the same held region and cannot tell where it came from. Holding
+// space while the button is down locks the size and moves the whole rectangle by however far the
+// mouse moves, which is the one thing a two-corner drag cannot otherwise correct: the corner put
+// down first is fixed, and a rectangle the right size in the wrong place would have to be drawn
+// again. Space is read off the hardware rather than out of a key event, since a lock that ends when
+// the key comes up would need key-ups tapped, and the tap deliberately does not take those.
+//
+// The button is swallowed as completely as the keyboard is, and for the same reason: a click that
+// reached the window underneath would press whatever it landed on, or raise something over the
+// target, and the shot would be of a screen the session itself had changed. A press and release
+// under 8 points on either side is a click rather than a drag and holds nothing, so a slip leaves
+// the hints where they were. Escape abandons a rectangle being drawn before it abandons the
+// session.
+//
+// A dragged region is the one region not clipped to the focused window. A frame out of the tree can
+// describe an element scrolled out of view, and photographing it would return whatever is in that
+// part of the screen instead; a rectangle drawn around what someone is looking at *is* that part of
+// the screen, so nothing holds it but the edges of the desktop. Its words still come out of the
+// focused window's tree, clipped to the rectangle the way a candidate's are -- a drag over the
+// target window copies what it covers, and a drag over some other app's window copies nothing. The
+// arrows have nothing to offer it: it is not in the candidate list, so there is no line of
+// ancestors to widen along and no sibling to step to, and they beep. Delete goes back to the hints,
+// which is where the tree is.
+//
+// A crosshair follows the pointer for as long as a session is up, with the coordinates under it
+// drawn beside it -- the same global top-left numbers --dump prints frames in and every capture line
+// ends with, so an edge found by eye can be read off rather than measured. Both are painted into the
+// overlay rather than being a cursor: a cursor belongs to the *active* application, and this app is
+// never that. `NSCursor.set()` and a `.cursorUpdate` tracking area were both tried on the overlay
+// and the WindowServer kept the arrow; activating to win the cursor would cost the target window its
+// active title bar, which is the thing the whole design is arranged around. So the system arrow
+// stays, and rides on top of a crosshair whose centre is its own tip.
+//
+// The mouse is taken in the tap and not by the window, which goes on letting everything through.
+// A window that took them would be handing events to an app that is running a bare CFRunLoop for
+// the length of a session and never answering AppKit -- which the WindowServer reports as a
+// beachball over the whole screen. The tap is ahead of the window anyway: it swallows the button,
+// and with it the scroll and the right button, which is worth having on its own. The hints are
+// computed once from a tree read at the press, and content scrolled out from under them would
+// leave every box pointing at something else.
+//
+// The readout follows the mouse-moved events the tap is already watching, and marks only the plate
+// it left and the plate it arrived at. A hand makes those events as fast as the screen refreshes,
+// and redrawing every hint on a display -- and refilling a display's worth of transparent pixels --
+// for a label that moved four points is the one thing on the overlay that could be made to stutter.
+// Neither the crosshair nor the numbers reach a photograph: screencapture(1) is never asked for the
+// cursor, and the overlay is ordered out before the shutter and drawn bare across the one Shift-T
+// fires.
 //
 // A question mark puts the whole list of keys on screen, grouped by whether it is the hints or a
 // held region that reads them, and dims what is behind it. There is nowhere else to put a legend
@@ -266,8 +321,10 @@
 // thumbnail being a picture.
 //
 // The overlay is the exception and stays one. It takes the keyboard whole for as long as it is up
-// -- that is what the tap is for -- so nothing else on the machine reads a key while a session is
-// running, a screen reader included. Escape is always the way out, and the session expires on its
+// -- and the mouse with it -- so nothing else on the machine reads a key while a session is
+// running, a screen reader included. Nothing it offers needs the mouse: a custom region is the one
+// thing that can only be drawn with one, and the hints reach every region the tree describes
+// without it. Escape is always the way out, and the session expires on its
 // own rather than being trusted to stop.
 //
 // There is one hotkey, Option-Command-4, because where a shot lands is decided at the end of a hold
@@ -681,6 +738,10 @@ func hintLabels(count: Int, alphabet: String) -> [String] {
 
 let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
 
+/// Under this on either side, a press and release was a click rather than a drag. It is the size of
+/// the slip a hand makes pressing a button, and nothing anyone means to photograph.
+let minimumDrag: CGFloat = 8
+
 /// What a hint plate looks like. The plates sit on top of whatever the target window is showing, so
 /// which one reads best is a property of the screen underneath rather than of the app: the grey is
 /// quiet enough not to be the first thing the eye lands on, and the yellow is loud enough to be
@@ -837,17 +898,122 @@ final class HintView: NSView {
   /// from the moment it is drawn, so a border would mark a state the box is never in the other half
   /// of -- decoration answering a question nobody has.
   private static let selectionFill = NSColor(calibratedRed: 0.35, green: 0.62, blue: 1, alpha: 0.45)
+  /// Where the pointer is, in this view's own coordinates, and the numbers drawn beside it. Those
+  /// are the global top-left coordinates the tree reports frames in and the dump prints, which is
+  /// not the space this view draws in -- the readout is for reading off the screen, not for finding
+  /// anything in here.
+  var pointer: CGPoint?
+  var pointerLabel: String?
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
-    NSColor.clear.set()
-    dirtyRect.fill()
+    // Erased rather than painted over. The window is transparent, so a clear fill composited the
+    // usual way leaves whatever was drawn there last -- which never showed while the whole view was
+    // being redrawn every time, and does the moment only the readout's own plate is.
+    NSColor.clear.setFill()
+    dirtyRect.fill(using: .copy)
 
     drawRegions()
+    // Never into a photograph, and not over the sheet: one is the shutter, and the other is a page
+    // being read rather than a screen being pointed at.
+    if !bare && !help { drawPointer() }
     // Never over a shutter. Nothing can fire one while the sheet is up -- every other key is
     // swallowed -- but the sheet is the one thing on the overlay large enough that drawing it into
     // a photograph would go unnoticed until someone opened the file.
     if help && !bare { drawHelp() }
+  }
+
+  /// The crosshair is drawn rather than set. A cursor belongs to the *active* application, not to
+  /// whichever app owns the window under the pointer: `NSCursor.set()` and a `.cursorUpdate`
+  /// tracking area were both tried on this overlay and the WindowServer kept the arrow, because this
+  /// app is never the active one and the whole design turns on it staying that way. Measured on a
+  /// machine, not reasoned about -- the readout drawn by the same call that set the cursor appeared
+  /// and the cursor did not. So the mark is painted into the overlay at the tracked position, and
+  /// the system arrow rides on top of it: a crosshair whose centre is where the shot will start,
+  /// with the arrow's own tip in the same place.
+
+  /// Move the readout, marking only the plate it left and the plate it arrived at. Mouse-moved
+  /// events arrive as fast as a hand can make them, and marking the whole overlay dirty would redraw
+  /// every hint on the screen -- and refill a display's worth of transparent pixels -- for a label
+  /// that moved four points.
+  func movePointer(to point: CGPoint, label: String) {
+    if let mark = pointerMark { setNeedsDisplay(mark) }
+    pointer = point
+    pointerLabel = label
+    if let mark = pointerMark { setNeedsDisplay(mark) }
+  }
+
+  private static let pointerFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+  private static let pointerPadding: CGFloat = 4
+  /// Clear of the crosshair drawn below, and of the system arrow still riding on top of it, which
+  /// reaches about that far down and to the right of its own tip.
+  private static let pointerOffset: CGFloat = 20
+  /// How far each arm of the crosshair reaches from the centre, and the gap left around the centre
+  /// itself so the point being aimed at is not the one point the mark covers.
+  private static let crossReach: CGFloat = 12
+  private static let crossGap: CGFloat = 3
+
+  private var pointerRun: NSAttributedString? {
+    pointerLabel.map {
+      NSAttributedString(string: $0, attributes: [.font: Self.pointerFont, .foregroundColor: NSColor.white])
+    }
+  }
+
+  /// The plate the numbers sit on. In one place because a move invalidates it twice -- where it was
+  /// and where it now is -- and a second copy of this arithmetic would be a second place for the two
+  /// to disagree and leave a plate on screen with nothing redrawing it.
+  private var pointerPlate: CGRect? {
+    guard let pointer, let run = pointerRun else { return nil }
+    let size = run.size()
+    let width = size.width + Self.pointerPadding * 2
+    let height = size.height + Self.pointerPadding * 2
+    // Below and to the right of the crosshair, and folded back across it where the screen runs out:
+    // a readout half off the edge is least readable exactly where the edge is what is being aimed
+    // at.
+    var x = pointer.x + Self.pointerOffset
+    var y = pointer.y - Self.pointerOffset - height
+    if x + width > bounds.maxX - 4 { x = pointer.x - Self.pointerOffset - width }
+    if y < bounds.minY + 4 { y = pointer.y + Self.pointerOffset }
+    return CGRect(x: x, y: y, width: width, height: height)
+  }
+
+  /// Where the pointer is, in the numbers the rest of the tool speaks: a region worth capturing is
+  /// often one whose edge has to be found by eye, and the same coordinates come back out of --dump
+  /// and off the end of every capture line.
+  private func drawPointer() {
+    guard let pointer else { return }
+    // The crosshair, in white over a dark halo, because it is drawn on whatever the target window
+    // is showing and either colour alone disappears against half of them.
+    let arms = NSBezierPath()
+    for (dx, dy) in [(CGFloat(1), CGFloat(0)), (-1, 0), (0, 1), (0, -1)] {
+      arms.move(to: CGPoint(x: pointer.x + dx * Self.crossGap, y: pointer.y + dy * Self.crossGap))
+      arms.line(to: CGPoint(x: pointer.x + dx * Self.crossReach, y: pointer.y + dy * Self.crossReach))
+    }
+    NSColor(calibratedWhite: 0, alpha: 0.55).setStroke()
+    arms.lineWidth = 3
+    arms.stroke()
+    NSColor.white.setStroke()
+    arms.lineWidth = 1
+    arms.stroke()
+
+    guard let plate = pointerPlate, let run = pointerRun else { return }
+    // Stated outright rather than themed, like the mask and the joined-text box it matches: the
+    // readout is drawn over another app's window, and a plate that went light with the desktop
+    // would be unreadable on half of them.
+    NSColor(calibratedWhite: 0.08, alpha: 0.9).setFill()
+    NSBezierPath(roundedRect: plate, xRadius: 3, yRadius: 3).fill()
+    run.draw(at: CGPoint(x: plate.minX + Self.pointerPadding, y: plate.minY + Self.pointerPadding))
+  }
+
+  /// Everything the readout paints -- the crosshair and the plate -- as one rectangle, which is what
+  /// a move has to mark dirty where it was and where it now is. In one place because a second copy
+  /// of this arithmetic would be a second place for the two to disagree and leave a mark on screen
+  /// with nothing redrawing it.
+  private var pointerMark: CGRect? {
+    guard let pointer else { return nil }
+    let cross = CGRect(x: pointer.x - Self.crossReach, y: pointer.y - Self.crossReach,
+                       width: Self.crossReach * 2, height: Self.crossReach * 2)
+    return (pointerPlate.map { cross.union($0) } ?? cross).insetBy(dx: -3, dy: -3)
   }
 
   private func drawRegions() {
@@ -1149,6 +1315,8 @@ enum HelpSheet {
         ("esc", "put back what it said, and stop editing"),
       ]),
       ("Any time", [
+        ("drag", "select a custom region"),
+        ("space", "hold while dragging to move the region"),
         ("esc or " + (hotkey ?? ""), "cancel"),
         ("\u{2318},", "settings"),
         ("?", "keyboard shortcuts (you are here)"),
@@ -1355,10 +1523,6 @@ final class Session {
   /// overlay's deadline is not the request's, and an answer that arrives after the overlay is down
   /// has nothing to draw itself on.
   var request: URLSessionTask?
-  /// What turns a click's screen point into a point in the overlay's view: Quartz counts down from
-  /// the top of the primary screen and the view counts up from the overlay's own corner.
-  var flipBase: CGFloat = 0
-  var overlayOrigin = CGPoint.zero
   /// How long the overlay waits after hiding itself before photographing the region, so the window
   /// server has composited the mask away. The same beat the shutter takes.
   var delayMs = 60
@@ -1378,12 +1542,39 @@ final class Session {
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
   var view: HintView!
+  /// The focused window's element, which is the tree a dragged region reads its text out of. A
+  /// custom region has no element of its own, so it takes the window's and lets the clip do the
+  /// selecting -- which is what `regionText` was already doing with every candidate it was handed.
+  var window: AXUIElement?
+  /// How many regions have been held, so an answer that arrives late can tell whether it is still
+  /// about what is on screen. An index would not do it: a dragged region has none.
+  var holds = 0
+  /// The union of the screens, in the global top-left space the tree reports frames in. A drag is
+  /// clamped to it: the pointer stops at the edge of the desktop, but a region translated by the
+  /// space key does not.
+  var screenArea = CGRect.infinite
+  /// What turns a global top-left point or rect -- where a click lands, and where the tree reports
+  /// frames -- into the overlay view's own coordinates: Quartz counts down from the top of the
+  /// primary screen and the view counts up from the overlay's own corner.
+  var flipBase: CGFloat = 0
+  var overlayOrigin = CGPoint.zero
+  /// The corner the drag started from and the corner under the pointer, in global top-left
+  /// coordinates; nil means no button is down. Space moves the two together, which is what locks
+  /// the size while the region is being placed.
+  var dragAnchor: CGPoint?
+  var dragPoint = CGPoint.zero
+  /// Where the pointer was at the previous drag event, which is what a translation is measured
+  /// against: space moves the region by however far the mouse moved, not to where the mouse now is.
+  var dragLast = CGPoint.zero
 
   func key(_ event: CGEvent) {
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     // Escape, which the shortcut list takes first: a panel is dismissed by it before the thing
     // behind the panel is, and a sheet opened to read is not a session anybody meant to abandon.
     if keyCode == 53 {  // escape
+      // The innermost thing first: a rectangle still being drawn, then a sheet opened over the
+      // session, and only then the session itself.
+      if dragAnchor != nil { cancelDrag(); return }
       if help { help = false; refresh(); return }
       // An open box is dismissed before the session under it, for the same reason the sheet above
       // is: the key that abandons an edit is the key everything else abandons an edit with, and a
@@ -1402,6 +1593,11 @@ final class Session {
       CFRunLoopStop(CFRunLoopGetCurrent())
       return
     }
+    // A drag owns the keyboard while the button is down, ahead of the box: a press puts the box
+    // away, so nothing typed mid-drag was meant for it. The two keys above are the only ones that
+    // mean anything to a drag -- and space, which the drag reads off the hardware on its way past
+    // rather than being handed here.
+    if dragAnchor != nil { return }
     // The open box is asked before everything below it, and it answers Command keys too -- the
     // arrows, the deletes and Command-A are a field's. `ownedByField` is where the line is drawn.
     if ownedByField(event) { edit(event); return }
@@ -1459,14 +1655,19 @@ final class Session {
       // same reason: it is the word, not the key the word starts on.
       if event.flags.contains(.maskShift), typedLetter(event) == "e" { beginEdit(); return }
       if keyCode == 51 { release() }  // delete, back to the hints
-      if let index = heldIndex {
-        switch keyCode {
-        case 123, 4: step(from: index, by: -1)  // left, h
-        case 124, 37: step(from: index, by: 1)  // right, l
-        case 126, 40: ascend(from: index)  // up, k
-        case 125, 38: descend()  // down, j
-        default: break
-        }
+      guard let index = heldIndex else {
+        // A dragged region is not in the candidate list: there is no line of ancestors to widen
+        // along and no sibling to step to, so the four keys have nothing to offer it. Delete goes
+        // back to the hints, which is where the tree is.
+        if [123, 124, 125, 126, 4, 37, 40, 38].contains(keyCode) { NSSound.beep() }
+        return
+      }
+      switch keyCode {
+      case 123, 4: step(from: index, by: -1)  // left, h
+      case 124, 37: step(from: index, by: 1)  // right, l
+      case 126, 40: ascend(from: index)  // up, k
+      case 125, 38: descend()  // down, j
+      default: break
       }
       return
     }
@@ -1498,10 +1699,17 @@ final class Session {
 
   /// Hold this candidate: mask around it, and restart the deadline, since every hold is a decision
   /// the run loop could not have known to wait for.
-  func hold(_ index: Int) {
-    held = candidates[index]
+  func hold(_ index: Int) { hold(candidates[index], at: index) }
+
+  /// The same for a region that came off the mouse rather than out of the tree, which is why the
+  /// index is optional: a dragged rectangle has no place in the candidate list for the arrows to
+  /// step from. Its rect is put into view coordinates by the arithmetic that built `view.boxes`
+  /// rather than read back out of them, that being the only one a custom region has.
+  func hold(_ candidate: Candidate, at index: Int?) {
+    holds += 1
+    held = candidate
     heldIndex = index
-    view.selection = view.boxes[index].rect
+    view.selection = viewRect(candidate.rect)
     view.notice = nil
     caret = nil
     anchor = 0
@@ -1515,9 +1723,119 @@ final class Session {
       edited = false
       joined = nil
     } else if joined != nil {
-      joined = regionText(candidates[index], budgetMs: budgetMs, separator: " ")
+      joined = regionText(candidate, budgetMs: budgetMs, separator: " ")
     }
     deadline = Date().addingTimeInterval(30)
+    refresh()
+  }
+
+  /// A global top-left point -- the space the mouse is reported in -- in the overlay view's own
+  /// bottom-left coordinates.
+  func viewPoint(_ point: CGPoint) -> CGPoint {
+    CGPoint(x: point.x - overlayOrigin.x, y: flipBase - point.y - overlayOrigin.y)
+  }
+
+  /// A global top-left rect -- the space the tree reports frames in, and the space the mouse is
+  /// reported in -- in the overlay view's own bottom-left coordinates.
+  func viewRect(_ rect: CGRect) -> CGRect {
+    CGRect(x: rect.minX - overlayOrigin.x, y: flipBase - rect.maxY - overlayOrigin.y,
+           width: rect.width, height: rect.height)
+  }
+
+  /// The rectangle between the two corners, clamped to the desktop: a region translated off the
+  /// edge would otherwise ask for a photograph of pixels that are not there.
+  var dragRect: CGRect {
+    guard let anchor = dragAnchor else { return .null }
+    let box = CGRect(x: min(anchor.x, dragPoint.x), y: min(anchor.y, dragPoint.y),
+                     width: abs(dragPoint.x - anchor.x), height: abs(dragPoint.y - anchor.y))
+    return box.intersection(screenArea)
+  }
+
+  /// The pointer, which the crosshair and its numbers follow. Watched rather than taken: the tap
+  /// only wants to know where the mouse is, and an app that lights a button up under the mask has
+  /// changed nothing about the region or the tree.
+  func moved(_ event: CGEvent) {
+    guard !help, !photographing else { return }
+    updatePointer(event.location)
+  }
+
+  /// Move the crosshair and the readout under it. Both are drawn into the overlay rather than being
+  /// a cursor, since the cursor belongs to the active application and this app is never that.
+  func updatePointer(_ point: CGPoint) {
+    view.movePointer(to: viewPoint(point),
+                     label: "\(Int(point.x.rounded())), \(Int(point.y.rounded()))")
+  }
+
+  /// The left button, for the regions the tree has no box for. It is swallowed as completely as the
+  /// keyboard is and for the same reason: a click that reached the window underneath would press
+  /// whatever it landed on, or raise something over the target, and the shot would be of a screen
+  /// the session itself had changed.
+  func drag(_ type: CGEventType, _ event: CGEvent) {
+    // Not under the shortcut sheet, which covers the hints and would be dragged over blind, and not
+    // across the beat the transcribe shutter takes.
+    guard !help, !photographing else { return }
+    let point = event.location
+    // The button moves the pointer as surely as a bare move does, and a drag is exactly when the
+    // numbers are being watched.
+    updatePointer(point)
+    switch type {
+    case .leftMouseDown:
+      // A press replaces whatever was held, mask and all: a region is being drawn, and the old one
+      // is what the press was aimed past. Nothing is drawn until the rectangle has a size.
+      if held != nil { release() }
+      typed = ""
+      dragAnchor = point
+      dragPoint = point
+      dragLast = point
+      view.selection = nil
+      deadline = Date().addingTimeInterval(30)
+      refresh()
+    case .leftMouseDragged:
+      guard let anchor = dragAnchor else { return }
+      // Space is read off the hardware rather than out of a key event, because a lock that ends
+      // when the key comes up would need key-ups tapped and the tap deliberately does not take
+      // those -- a swallowed key-up leaves the hotkey manager believing the chord that opened the
+      // session is still held. Nothing has to happen the instant it goes down or up, either: a
+      // locked size only shows once the mouse moves, so the drag can ask on its way past.
+      //
+      // `.hidSystemState` and not `.combinedSessionState`: the session state is what is left after
+      // the taps have had the stream, and this session's own tap swallows every key-down there is,
+      // so the space it would be asked about is the one it just ate. Measured, not reasoned about
+      // -- with a session up the same press reads true off the hardware and false off the session.
+      if CGEventSource.keyState(.hidSystemState, key: 49) {  // space
+        // By however far the mouse moved rather than to where it now is: both corners travel, so
+        // the size is untouched, and letting go of space resumes sizing from the corner as it now
+        // sits rather than from where it was put down.
+        dragAnchor = CGPoint(x: anchor.x + point.x - dragLast.x, y: anchor.y + point.y - dragLast.y)
+        dragPoint = CGPoint(x: dragPoint.x + point.x - dragLast.x, y: dragPoint.y + point.y - dragLast.y)
+      } else {
+        dragPoint = point
+      }
+      dragLast = point
+      let rect = dragRect
+      view.selection = rect.isNull || rect.isEmpty ? nil : viewRect(rect)
+      deadline = Date().addingTimeInterval(30)
+      refresh()
+    case .leftMouseUp:
+      guard dragAnchor != nil else { return }
+      let rect = dragRect
+      dragAnchor = nil
+      // A press and release that went nowhere is a click, and a click is not a region: the hints
+      // come back rather than a few pixels nobody meant to select being held.
+      guard let window, !rect.isNull, rect.width >= minimumDrag, rect.height >= minimumDrag else {
+        view.selection = nil
+        refresh()
+        return
+      }
+      hold(Candidate(element: window, role: "custom", subrole: "", label: "", rect: rect, depth: 0, childCount: 0), at: nil)
+    default: break
+    }
+  }
+
+  /// Abandon a rectangle half-drawn, leaving the hints as they were.
+  func cancelDrag() {
+    dragAnchor = nil
+    view.selection = nil
     refresh()
   }
 
@@ -1539,15 +1857,14 @@ final class Session {
   }
 
   /// A click on the text box, arriving through the tap rather than through the window. The overlay
-  /// ignores the mouse the way it ignores focus, and it has to: a panel that accepted a click would
+  /// ignores the mouse the way it ignores focus, and it has to: a window that accepted a click would
   /// activate the app and redraw the target's title bar inactive, which is the picture every other
   /// decision here is arranged not to take. The tap sees the press before any window does, so the
   /// box can answer it without the app ever becoming the thing that was clicked.
   ///
-  /// Returns whether the click was ours. Only ever while a box is on screen: everywhere else on the
-  /// overlay a click belongs to whatever is under the mask, which is where it has always gone. With
-  /// a box up the whole overlay takes them, because a click that missed the box by a few points
-  /// would otherwise land in a window the mask is hiding.
+  /// Returns whether the click was the box's. Only ever while one is on screen; everywhere else the
+  /// button draws a region. With a box up the whole overlay takes them, because a click that missed
+  /// the box by a few points would otherwise start a rectangle over the words being read.
   func mouse(_ event: CGEvent, type: CGEventType) -> Bool {
     guard let text = joined, view.notice == nil, !photographing else { return false }
     let string = text as NSString
@@ -1782,7 +2099,10 @@ final class Session {
   /// covered the region, but the corner brackets are drawn inside it and the text box over it, and
   /// either would be transcribed as though the app had written them there.
   func transcribe() {
-    guard let region = held, let index = heldIndex else { return }
+    guard let region = held else { return }
+    // What the answer is about, so a region held after it was asked for -- stepped to, or drawn --
+    // can tell that the answer is no longer its own.
+    let token = holds
     // Off, back on, off again, all without asking twice. The answer is kept for as long as the
     // region is held, so the toggle costs nothing after the first press; only a region that has
     // never been read sends a picture anywhere.
@@ -1842,7 +2162,7 @@ final class Session {
       DispatchQueue.main.async {
         // The held region can have moved on under an arrow while the call was out; the answer is
         // about the picture that was taken, so it is dropped rather than drawn over a different box.
-        guard let self, !self.cancelled, self.chosen == nil, self.heldIndex == index else { return }
+        guard let self, !self.cancelled, self.chosen == nil, self.holds == token else { return }
         self.request = nil
         self.view.notice = nil
         if let text {
@@ -1913,6 +2233,7 @@ final class Session {
 
   /// Back from the mask to the hints, with nothing typed.
   func release() {
+    holds += 1
     held = nil
     heldIndex = nil
     descent = []
@@ -1940,13 +2261,38 @@ final class Session {
   }
 }
 
+/// What the tap asks for: the keyboard whole, the left button so a region can be drawn, and the
+/// scroll and right button so neither reaches the window underneath. Assembled a term at a time
+/// because the type checker gives up on the one expression.
+let tapMask: CGEventMask = {
+  let types: [CGEventType] = [
+    .keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+    .rightMouseDown, .rightMouseUp, .scrollWheel, .mouseMoved,
+  ]
+  var mask: UInt64 = 0
+  for type in types { mask |= 1 << UInt64(type.rawValue) }
+  return CGEventMask(mask)
+}()
+
 func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, context: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
   switch type {
   case .keyDown: Session.shared.key(event)
   case .leftMouseDown, .leftMouseDragged, .leftMouseUp:
-    // Down, drag and up are answered together or not at all: a swallowed press whose release got
-    // through leaves the app underneath holding a button it never saw let go of.
-    guard Session.shared.mouse(event, type: type) else { return Unmanaged.passUnretained(event) }
+    // The box first when one is up, since it takes the whole overlay -- a click that missed it by a
+    // few points would otherwise start a rectangle instead of moving the caret. Everywhere else the
+    // button draws a region, and either way it is swallowed: down, drag and up are answered
+    // together or not at all, and a press whose release got through would leave the app underneath
+    // holding a button it never saw let go of.
+    if !Session.shared.mouse(event, type: type) { Session.shared.drag(type, event) }
+  // Swallowed and nothing else. A scroll would move the content out from under every hint -- they
+  // were computed once, from a tree read at the press -- and a right button would put a menu over
+  // the region about to be photographed.
+  case .rightMouseDown, .rightMouseUp, .scrollWheel: break
+  case .mouseMoved:
+    // Followed and handed on: the crosshair needs to know where the pointer is, and an app that
+    // lights a button up under it has changed nothing about the region or the tree.
+    Session.shared.moved(event)
+    return Unmanaged.passUnretained(event)
   case .tapDisabledByTimeout, .tapDisabledByUserInput:
     if let tap = context { CGEvent.tapEnable(tap: Unmanaged<CFMachPort>.fromOpaque(tap).takeUnretainedValue(), enable: true) }
     return nil
@@ -2368,6 +2714,14 @@ func runSession(_ options: Options) -> Outcome {
   }
 
   let overlayFrame = screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
+  // The window still lets every mouse event through to whatever is underneath, and the mouse is
+  // taken in the tap instead. Routing them here rather than there was tried and beachballs the
+  // machine for the length of a session: a session runs a bare CFRunLoop and never pumps NSApp, so
+  // events delivered to this app are queued and never answered, and the WindowServer puts the
+  // spinner up over an app that is not going to reply. The tap is ahead of all of that -- it
+  // swallows the button, the scroll and the right button before any window is picked -- and the
+  // one thing the window could have given us, the cursor, it could not: that belongs to the active
+  // application, which this one never is.
   let overlay = NSWindow(contentRect: overlayFrame, styleMask: .borderless, backing: .buffered, defer: false)
   overlay.isOpaque = false
   overlay.backgroundColor = .clear
@@ -2390,21 +2744,20 @@ func runSession(_ options: Options) -> Outcome {
   session.budgetMs = options.budgetMs
   session.delayMs = options.delayMs
   session.cancelChord = options.cancelChord
+  session.window = windowElement
+  session.screenArea = screenArea
   session.flipBase = flipBase
   session.overlayOrigin = overlayFrame.origin
   Session.shared = session
+  // Where the pointer already is. The session is opened by a keystroke, so a hand that never
+  // touches the mouse would otherwise be given a crosshair with nothing beside it until it did.
+  session.updatePointer(CGPoint(x: NSEvent.mouseLocation.x, y: flipBase - NSEvent.mouseLocation.y))
 
   guard let tap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
     place: .headInsertEventTap,
     options: .defaultTap,
-    // The mouse comes in for the text box and for nothing else -- the session hands back every
-    // click it does not want, so the hints and the plain mask keep letting one through to whatever
-    // is under them. Moves are not asked for: a drag reports itself, and hover means nothing here.
-    eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue)
-      | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-      | CGEventMask(1 << CGEventType.leftMouseDragged.rawValue)
-      | CGEventMask(1 << CGEventType.leftMouseUp.rawValue),
+    eventsOfInterest: tapMask,
     callback: tapCallback,
     userInfo: nil)
   else {

@@ -6,7 +6,8 @@ Every region worth capturing — a sidebar, a message, a diff panel, a button �
 in the app's accessibility tree, with a frame that can be read. `axshot` walks the focused window's
 tree, keeps the boxes that are actually visible, overlays a Surfingkeys-style hint on each, and
 captures the one whose hint you type. The region snaps to a real element instead of to wherever the
-pointer happened to stop.
+pointer happened to stop — and where the tree describes nothing to snap to, a rectangle can still be
+dragged by hand.
 
 Typing a hint holds the region rather than firing the shutter: everything outside it is masked and
 `Return` takes the shot. The arrows adjust what is held — `←` and `→` step to the neighbouring
@@ -19,6 +20,30 @@ bar it would otherwise take to get there. `?` puts the whole list of keys on scr
 overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
 down on `?` or `Escape`. The same list is on the menu bar as **Keyboard Shortcuts**, for reading it
 without pressing the hotkey first.
+
+A region can also be drawn by hand, for what the tree does not describe — a slide, a video, a corner
+of a canvas, half a paragraph, an app whose accessibility is one box the size of its window. Press
+the left button anywhere and drag; the mask follows the rectangle as it is made, and letting go
+holds it exactly as a hint would have, so everything below reads it without knowing where it came
+from. Hold `space` while the button is down to lock the size and move the whole rectangle — the
+corner you put down first is otherwise fixed, and a rectangle the right size in the wrong place
+would have to be drawn again. `Escape` abandons a rectangle being drawn before it abandons the
+session, and a click that goes nowhere holds nothing.
+
+A dragged region is the one region not clipped to the focused window: a rectangle drawn around what
+you are looking at is by definition what is on screen. Its *words* still come out of the focused
+window's tree, so `⌘⇧C` over the target window copies what the rectangle covers and over another
+app's window copies nothing. The arrows have nothing to step to from a region that is not in the
+tree, and beep; `Delete` goes back to the hints.
+
+While a session is up a crosshair follows the pointer with the coordinates under it drawn beside it
+— the same global top-left numbers `--dump` prints frames in and every capture line ends with, so an
+edge found by eye can be read off rather than measured. It is drawn into the overlay rather than
+being the cursor, which belongs to whichever app is *active* and so is never this one; the system
+arrow rides on top of it. The overlay swallows the mouse to take the drag, which also means a scroll
+or a right-click under the mask no longer reaches the window beneath — content scrolled out from
+under hints that were computed once would leave every one of them pointing at something else.
+Neither the crosshair nor the numbers land in a shot.
 
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:
@@ -85,7 +110,7 @@ The box stays drawn and unfocused; `⇧E` puts the caret back, and a second `Esc
 session. `Return` is the exception and stays the shutter throughout.
 
 While a box is up the overlay takes every click, so one that misses the box does nothing rather than
-landing in the window the mask is hiding; with no box up, clicks go through as they always have. What
+starting a rectangle over the words being read; with no box up, the button draws a region. What
 you typed does not survive an arrow step, for the reason a transcription does not: it is about the
 region it was typed over.
 

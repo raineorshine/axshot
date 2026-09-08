@@ -116,7 +116,9 @@ explained where it is implemented.
   would save a fraction of what the capture alone costs, and would keep every Chromium app's
   accessibility engine switched on for as long as the app runs.
 - **Only regions that are actually on screen are offered**, clipped to the focused window. An
-  element scrolled out of view has a frame that would photograph something else.
+  element scrolled out of view has a frame that would photograph something else. A region dragged
+  by hand is the exception and is clipped to nothing but the desktop: a rectangle drawn around what
+  someone is looking at is already what is on screen.
 - **Only text that was on screen is copied.** The tree carries names written for screen readers
   alongside the words a person can read, and no attribute separates them — the same field holds a
   button's visible label and an icon's stand-in name — so the test is whether the text would have
