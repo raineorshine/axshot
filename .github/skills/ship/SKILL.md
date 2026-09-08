@@ -85,6 +85,10 @@ say — and yours then merges without a marker and does nothing. Read the whole 
 lands in, not just the hunk, and re-test after any rebase that touched behaviour. The compile
 proves nothing here; the change you tested is no longer the change you have.
 
+Re-testing takes the lock again, so the title goes back to `🔒 ` while it is held and to `🚀 ` when it
+is released. The question a prefix answers is which chat has the lock, and a ship that is mid-test is
+the answer.
+
 Skip this step and step 4 if you are already on `main` in the main checkout; commit there and go
 straight to step 5.
 

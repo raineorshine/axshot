@@ -127,8 +127,14 @@ whole of the repair, and a shifted punctuation key is not a case change. `keystr
 character and never reaches the repair. Assert an edit with letters, and read a stray comma in the
 result as the driver rather than as the caret.
 
-Give the walk a few seconds before sending the hint. The overlay is not up until the walk finishes,
-and a key sent early is delivered to the target app instead.
+Wait for the overlay rather than for a few seconds. It is not up until the walk finishes, a key sent
+before that goes to the target app, and how long the walk takes belongs to the window it was pointed
+at — a page that took two seconds once will not the next time. The overlay is a window, so ask the
+window server: `CGWindowListCopyWindowInfo` lists an on-screen window owned by `Axshot` at
+`kCGWindowLayer` 1000 for exactly as long as the session is up. Poll for it, and send nothing if it
+never appears. That is the app-driven half of the `kill -0` guard below — driving the installed app
+through its hotkey leaves no process of your own to test — and without it the hint letter and the
+Return land in whatever the drive activated.
 
 Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks
@@ -372,10 +378,13 @@ name will not be the one you were given: macOS writes a narrow no-break space (U
 in screenshot and recording names, so a path that `ls` prints and the user pastes still fails `stat`
 and `ffmpeg` with "No such file or directory". Match it with a glob rather than retyping it.
 
-The shell running the tests generally has no Screen Recording grant of its own — `screencapture`
-fails with "could not create image from rect" — so a probe image for anything that reads pixels has
-to be rendered rather than photographed. `qlmanage -t -s 900 -o . file.txt` turns a text file into a
-PNG of that text, which is enough to prove a reader reads.
+Whether the shell running the tests can capture at all is the grant of whatever app is hosting it,
+and it is one call to find out rather than a thing to assume either way: `screencapture -x -R
+0,0,60,60 /tmp/probe.png`, then look at the file. Ungranted it fails with "could not create image
+from rect", and a probe image for anything that reads pixels then has to be rendered rather than
+photographed — `qlmanage -t -s 900 -o . file.txt` turns a text file into a PNG of that text, which is
+enough to prove a reader reads. Granted, the screen becomes something you can measure, which is most of
+what [asking what the system draws](#asking-what-the-system-draws) is for.
 
 ## Asking what the tree actually says
 
@@ -415,6 +424,20 @@ function of its arguments:
   focus is, which is the user's window. A key bound nowhere — F16 — travels the same path and
   changes nothing on arrival. Posting to the probe's own pid looks safer still and is not the same
   experiment: it never enters the session, so nothing watching the session sees it.
+
+## Asking what the system draws
+
+A number the system draws with and offers no API for — a window's corner radius, say — is measured,
+and the measurement is a comparison rather than a fit. Draw the candidates yourself, photograph them
+beside a photograph of the real thing, and compare the edge profiles row by row. The one that agrees
+to under a device pixel is the answer, and the candidates either side of it coming out an order of
+magnitude worse is what says the comparison was sharp enough to have one.
+
+Fitting a formula to the real thing instead returns a confident wrong number, because it assumes the
+shape before it measures it. A macOS window corner is a continuous curve rather than a circular arc
+— `CALayer`'s `cornerCurve = .continuous` draws it and no `NSBezierPath` does — so least squares
+through its edge settles on a radius that is nothing in particular, with a residual small enough to
+read as agreement.
 
 ## Asking who the process is
 
