@@ -123,6 +123,12 @@ explained where it is implemented.
   alongside the words a person can read, and no attribute separates them — the same field holds a
   button's visible label and an icon's stand-in name — so the test is whether the text would have
   fitted in its own element. A geometric answer to a question the tree does not answer.
+- **What the overlay asks about the keyboard, it asks the hardware.** The tap swallows every
+  key-down, so `CGEventSource.keyState(.combinedSessionState, …)` reads false for the key it has
+  just eaten — the session state is what is left of the stream after the taps have had it.
+  `.hidSystemState` is the physical keyboard and is the one to ask. This is not a detail of the one
+  key that reads it today; it is true of any key a session wants the *state* of rather than the
+  press.
 - **A key is matched by its position or by its letter, according to which one it is.** HJKL and the
   hotkey chords are hand shapes and are read as physical keys, so they stay where the hand is on any
   layout; a key chosen because of the word it stands for is read as the letter the layout types, so
@@ -159,10 +165,19 @@ explained where it is implemented.
   gets Escape and nothing else. [docs/accessibility.md](docs/accessibility.md) is the set of ways
   this looks done when it is not.
 - **The app never takes focus.** Hint keys come from an event tap, and so do the clicks that aim
-  the text box — the overlay window ignores the mouse. A focused target redraws its title bar
-  inactive, and the screenshot would show that; a window that accepted a click would activate the
-  app and cause exactly that, which is why input arrives ahead of any window rather than through
-  one.
+  the text box and the ones that draw a region — the overlay window ignores the mouse. A focused
+  target redraws its title bar inactive, and the screenshot would show that; a window that accepted
+  a click would activate the app and cause exactly that, which is why input arrives ahead of any
+  window rather than through one. Two things follow, both measured rather than reasoned about, and
+  both explained where the overlay is built:
+  - **The overlay cannot own the cursor.** A cursor belongs to the *active* application and not to
+    whoever owns the window under the pointer, so `NSCursor.set()` and a `.cursorUpdate` tracking
+    area are both no-ops here however the window is configured. Anything the pointer should look
+    like is drawn into the overlay at the tracked position, with the system arrow riding on top.
+  - **The overlay must not accept mouse events.** A session runs a bare `CFRunLoop` and never pumps
+    `NSApp`, so events routed to this app queue unanswered and the WindowServer beachballs the
+    screen for as long as the session is up. `ignoresMouseEvents` stays true and the tap takes what
+    is wanted, which it can, being ahead of every window.
 - **The hotkey is a Carbon `RegisterEventHotKey`.** It is the only mechanism that reserves the chord
   system-wide and the only one needing no permission.
 - **Escape is taken in `keyDown`, never `cancelOperation`.** AppKit only sends `cancelOperation:`

@@ -177,6 +177,20 @@ invocation while the first is holding the overlay. A session that goes on behavi
 click never happened -- an arrow that steps the region rather than the caret -- is this, not the
 handler.
 
+A modifier *held across* a drag is posted the same way a held chord is — a bare `keyDown` with no
+matching up, and the release sent later — and asking whether it worked is the trap, not the posting.
+The overlay's own tap eats that key-down, so the session state never records it and
+`CGEventSource.keyState(.combinedSessionState, …)` answers false for a key that is genuinely down;
+`.hidSystemState` is the hardware and answers true. A feature that reads the wrong one of those
+fails identically under a driver and under a hand, which is the good case: it is a real bug, not a
+driving artifact. Probe both from the same throwaway option, with a session up and without, before
+concluding either way. (`.privateState` is not a third answer — the call hangs.)
+
+The dimensions of what comes out are the assertion for a whole driven drag, and cheaper than a
+photograph: the file is twice the dragged rectangle in pixels on a Retina display, so a run that
+drags a known box and presses Return checks the tap, the rectangle arithmetic, the hold and the
+shutter in one number. Photograph the overlay only for what it *draws* mid-drag.
+
 Run any such reproduction against a build *without* the fix before trusting it. One that passes
 either way is measuring something other than what it was written for, and it will go on passing
 after the fix for the same wrong reason.
