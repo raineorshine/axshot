@@ -98,6 +98,13 @@ say — and yours then merges without a marker and does nothing. Read the whole 
 lands in, not just the hunk, and re-test after any rebase that touched behaviour. The compile
 proves nothing here; the change you tested is no longer the change you have.
 
+That trap has a mechanical form worth checking by hand whenever a branch adds a field that has to be
+kept in step with an existing one: every assignment of the old field is a place the new one belongs
+beside it, and the branch that landed first can have added assignments your side has never seen.
+Each merges cleanly and the compiler is content, because nothing in the language ties the two
+together — so grep the old field's assignments in the merged file and look for the new one next to
+every one of them.
+
 Re-testing takes the lock again, so the title goes back to `🔒 ` while it is held and to `🚀 ` when it
 is released. The question a prefix answers is which chat has the lock, and a ship that is mid-test is
 the answer.

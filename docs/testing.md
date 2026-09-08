@@ -48,6 +48,13 @@ It returns silently when the keyboard was already quiet and says so when it had 
 a wait to lengthen. Exit 2 is "could not tell", which is never a licence to proceed as though it had
 passed.
 
+Nobody typing is not the same as somebody there, and the gate cannot tell them apart: a locked
+screen is the quietest keyboard on the machine and passes it in three seconds, every time.
+Everything visual behind it then fails without saying why, in the shapes
+[the environment failures](#failures-that-are-the-environment-not-the-code) lists. So a burst whose
+result is a picture asks whether there is a screen to take it on as well, and not only whether the
+keyboard is free.
+
 What it reads is `CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)` —
 seconds since the last hardware keypress. The other three ways to ask are all wrong for this, and
 each is wrong quietly:
@@ -385,6 +392,22 @@ frame where the mask is missing is visible at a glance where playback is too fas
     ffmpeg -v error -i rec.mov -vf "scale=760:-1" frames/f%03d.png
     ffmpeg -v error -i frames/f%03d.png -vf "tile=6x4,scale=1400:-1" grid.png
 
+A transition this session causes is recorded rather than waited for: `screencapture -v -V<seconds>
+-x out.mov` runs alongside the drive. What settles whether something fades or snaps is then a number
+per frame rather than a sheet of pictures —
+
+    ffmpeg -v error -i out.mov -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" -an -f null -
+
+— and the differences between consecutive values are the answer: a ramp is several even steps and a
+snap is one. The value it settles on is worth as much as the shape, because a mask over a known
+fraction of the screen predicts its own final luma, and a level that stops short of that is a fade
+that never reached the top. Two things to know before trusting the series. Measure the whole frame
+unless a crop has been checked for being already black — a dark window under the crop returns the
+floor for every frame, which reads as nothing having happened. And the recording is variable-rate
+and drops frames through exactly the fast change being measured, so the number of frames a
+transition spans moves from run to run while its shape does not: it is evidence that there is a
+ramp, not a measurement of how long the ramp is.
+
 Such a clip is often under a second, so ask for every frame and not a sampled `fps=`. And the file
 name will not be the one you were given: macOS writes a narrow no-break space (U+202F) before AM/PM
 in screenshot and recording names, so a path that `ls` prints and the user pastes still fails `stat`
@@ -480,7 +503,18 @@ Each of these cost time in the session that built the tool.
 
       ioreg -n Root -d1 -r | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'
 
-  An absent key is an unlocked session; `=Yes` means stop and hand the build over.
+  An absent key is an unlocked session; `=Yes` means stop and hand the build over. The signatures
+  it wears elsewhere read even less like the cause, because none of them is an error: a
+  `screencapture` still writes a file of uniform mid-grey rather than failing, a driven capture
+  leaves no file at all and says nothing, and `screencapture -v` never finalises its recording —
+  it ignores its own `-V` limit and has to be killed.
+- **Relaunching the app strands the lock while the session is locked.** `open -a` fails there with
+  `_LSOpenURLsWithCompletionHandler ... error -600` where a plain `open /Applications/Axshot.app`
+  launches it, and the lock script restores with the first under `set -e`. So `release` quits the
+  app, aborts before dropping the lock, and leaves exactly what the lock exists to prevent: no menu
+  bar app, and a lock nobody is holding on purpose. Put the app back with the plain `open`, then
+  release again — the live-app mismatch it now reports is your own half-done restore rather than
+  somebody's build, which is the case `--force` is for.
 - **`--focused` captures whatever is on top of the window.** It aims the walk and not the camera, so
   the outcome line names the region it meant while the pixels are of whatever was in front. Front the
   target again before *each* run, not once per test: a run that ends gives the foreground back, and
