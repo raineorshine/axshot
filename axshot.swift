@@ -79,6 +79,20 @@
 // opens settings, held region or not, since the overlay is in the way of the menu bar and what a
 // shortcut needs changing for is generally the screen it was pressed on.
 //
+// The mask fades in over a tenth of a second rather than appearing, and fades out again wherever it
+// leaves with no picture having been taken -- Delete back to the hints, or a cancelled session. The
+// point of the mask is to show what the shot will contain, and a rectangle announced by flashing
+// the whole screen dark is read as the flash rather than as the rectangle: the ramp is what lets
+// the eye follow the darkness to the one place it did not reach. The corner brackets ride the same
+// level, since they are the same announcement. An arrow step only moves the mask -- the darkness is
+// already up and being compared against, and re-fading it under every step would blink the thing
+// the steps are for -- and the text box waits for the level to reach the top and goes at the first
+// sign of it falling, because half-lit words are not words. The exits that photograph something do
+// not fade at all: the shutter is already waiting out a beat for the window server to composite the
+// overlay away, and a fade in front of that is either a slower shot or a mask caught half-lit
+// inside it. Neither does a rectangle drawn by hand, in or out: that mask is under the pointer and
+// follows it, and darkness ramping in behind the hand would trail the corner being drawn from.
+//
 // The plates are a light grey gradient by default, and settings offers four more -- dark, yellow,
 // blue, pink -- picked by clicking the plate rather than a name for it. Which one reads better is a
 // property of the window underneath rather than of the app, so it is a setting and not a rule: the
@@ -1154,6 +1168,12 @@ final class HintView: NSView {
   /// shutter waits for Return. Preview's crop, without the grid -- the point is to see what the
   /// shot will contain while the target is still on screen to compare it against.
   var selection: CGRect?
+  /// The mask itself: the box it leaves clear, and how far the darkness has come in -- 0 is a
+  /// screen with nothing over it, 1 is the mask at full strength. A second fact rather than a level
+  /// hung off `selection`, because the two have different lives: Delete lets the region go and puts
+  /// the hints back while the darkness is still on its way off the screen, and the hints are drawn
+  /// through whatever is left of it.
+  var mask: (rect: CGRect, level: CGFloat)?
   /// The held region's text with its line breaks taken out, drawn over the region itself. What the
   /// tree hands over is not always what the layout showed -- a paragraph split across a dozen
   /// elements comes back as a dozen lines -- so the joined form is put on screen before it is
@@ -1315,35 +1335,43 @@ final class HintView: NSView {
   }
 
   private func drawRegions() {
-    if let selection {
+    if let mask {
       // Even-odd over the whole overlay minus the region, so the mask is one fill and the region
       // is left completely untouched rather than drawn over at a low alpha.
-      let mask = NSBezierPath(rect: bounds)
-      mask.append(NSBezierPath(rect: selection))
-      mask.windingRule = .evenOdd
-      NSColor(calibratedWhite: 0, alpha: 0.55).setFill()
-      mask.fill()
+      let path = NSBezierPath(rect: bounds)
+      path.append(NSBezierPath(rect: mask.rect))
+      path.windingRule = .evenOdd
+      NSColor(calibratedWhite: 0, alpha: 0.55 * mask.level).setFill()
+      path.fill()
 
-      // Nothing below this line is drawn for the shutter: it all sits inside the region, which is
-      // the one part of the screen the photograph is of.
-      if bare { return }
-
-      // Corner brackets, drawn inside the region so they mark it without covering its edge pixels.
-      let arm = min(24, selection.width / 3, selection.height / 3)
-      let thickness: CGFloat = 2
-      let corners = NSBezierPath()
-      for (x, dx) in [(selection.minX, 1.0 as CGFloat), (selection.maxX, -1.0 as CGFloat)] {
-        for (y, dy) in [(selection.minY, 1.0 as CGFloat), (selection.maxY, -1.0 as CGFloat)] {
-          corners.move(to: CGPoint(x: x + dx * arm, y: y + dy * thickness / 2))
-          corners.line(to: CGPoint(x: x, y: y + dy * thickness / 2))
-          corners.move(to: CGPoint(x: x + dx * thickness / 2, y: y))
-          corners.line(to: CGPoint(x: x + dx * thickness / 2, y: y + dy * arm))
+      // Corner brackets, drawn inside the region so they mark it without covering its edge pixels,
+      // and dimmed by the same level the darkness is: the mask and the brackets are one
+      // announcement, and brackets snapping on at the end of the mask's fade would read as two.
+      //
+      // Nothing from here down is drawn for the shutter: the brackets and the box below them sit
+      // inside the region, which is the one part of the screen the photograph is of.
+      if !bare {
+        let region = mask.rect
+        let arm = min(24, region.width / 3, region.height / 3)
+        let thickness: CGFloat = 2
+        let corners = NSBezierPath()
+        for (x, dx) in [(region.minX, 1.0 as CGFloat), (region.maxX, -1.0 as CGFloat)] {
+          for (y, dy) in [(region.minY, 1.0 as CGFloat), (region.maxY, -1.0 as CGFloat)] {
+            corners.move(to: CGPoint(x: x + dx * arm, y: y + dy * thickness / 2))
+            corners.line(to: CGPoint(x: x, y: y + dy * thickness / 2))
+            corners.move(to: CGPoint(x: x + dx * thickness / 2, y: y))
+            corners.line(to: CGPoint(x: x + dx * thickness / 2, y: y + dy * arm))
+          }
         }
+        NSColor(calibratedWhite: 1, alpha: mask.level).setStroke()
+        corners.lineWidth = thickness
+        corners.stroke()
       }
-      NSColor.white.setStroke()
-      corners.lineWidth = thickness
-      corners.stroke()
+    }
 
+    // A region held is the hints answered: they stop being drawn the moment one is, and come back
+    // only when it is let go of -- through what is left of the mask, which is still receding.
+    if selection != nil {
       if let plate = textBox() {
         NSColor(calibratedWhite: 0.08, alpha: 0.94).setFill()
         NSBezierPath(roundedRect: plate.box, xRadius: 4, yRadius: 4).fill()
@@ -1409,10 +1437,14 @@ final class HintView: NSView {
     }
   }
 
-  /// Nil whenever nothing is drawn: no region held, the shutter running bare, no text to show, or a
-  /// region too small to fit any of it.
+  /// Nil whenever nothing is drawn: no region held, the shutter running bare, the mask still on its
+  /// way in or already on its way out, no text to show, or a region too small to fit any of it.
+  ///
+  /// Words rather than chrome, which is why this waits for the fade the brackets ride: half-lit
+  /// text is not text, and the box is opaque over the region besides -- a box dissolving into the
+  /// window it covers reads as a rendering fault rather than as something leaving.
   func textBox() -> TextBox? {
-    guard let selection, !bare, let string = notice ?? joined else { return nil }
+    guard let selection, !bare, mask?.level == 1, let string = notice ?? joined else { return nil }
     // Over the region rather than beside it: the joined text is what the region says, and the
     // region is the only box on screen guaranteed to be where the eye already is. Opaque, because
     // text drawn over text is neither of them.
@@ -1824,6 +1856,17 @@ final class Session {
   /// How long the overlay waits after hiding itself before photographing the region, so the window
   /// server has composited the mask away. The same beat the shutter takes.
   var delayMs = 60
+  /// How long the mask takes to arrive, and to leave. Long enough to read as darkness closing in
+  /// rather than as a flash of it, and short enough to be over before the eye has finished moving
+  /// to the region it is closing in on -- a reveal much past a fifth of a second stops reading as
+  /// the app answering and starts reading as the app being slow.
+  ///
+  /// Not gated on Reduce Motion, unlike the toast's slide: a cross-fade is what that setting asks
+  /// for in place of travel, and this is already one.
+  static let fadeMs = 120.0
+  /// The fade in flight, if there is one. Held so a hold landing mid-release turns the darkness
+  /// around from where it is rather than queueing a second ramp behind the first.
+  private var fading: Timer?
   /// Set across the photograph, so a key arriving in that beat cannot start a second one.
   var photographing = false
   var cancelled = false
@@ -1997,6 +2040,80 @@ final class Session {
     refresh()
   }
 
+  /// Bring the mask in around `rect`, or move it there if it is already up. A hold that follows
+  /// another -- every arrow step -- only moves it: the darkness is on screen and being looked at,
+  /// and re-fading it under each step would blink the thing the steps exist to compare.
+  func showMask(_ rect: CGRect) {
+    if view.mask == nil { view.mask = (rect, 0) } else { view.mask?.rect = rect }
+    fade(to: 1)
+  }
+
+  /// Put the mask exactly here, or take it away, with no fade either way. What the hand is drawing
+  /// is not animated: a dragged rectangle is direct manipulation, and darkness ramping in behind the
+  /// pointer would trail the corner it is being drawn from. The fade belongs to the mask that
+  /// arrives on a keystroke, which has nothing on screen already saying where it will land.
+  func drawMask(_ rect: CGRect?) {
+    stopFade()
+    if let rect { view.mask = (rect, 1) } else { view.mask = nil }
+  }
+
+  /// Take it off again. The rect stays where it is: it is what the darkness is still drawn around
+  /// for the length of the fade, after the region it came from has been let go of.
+  func hideMask() { fade(to: 0) }
+
+  /// Ramp the mask to `level` and stop there. Timed from where the darkness actually is rather than
+  /// from the end it set out from, so a hold interrupting a release finishes sooner than one
+  /// starting from a clear screen: at a fixed duration the same keystroke would take the same time
+  /// to show a fifth of a fade as a whole one.
+  private func fade(to level: CGFloat) {
+    fading?.invalidate()
+    fading = nil
+    guard let from = view.mask?.level, from != level else {
+      // Gone rather than transparent: a mask at zero still answers `if let mask`, and a fade asked
+      // to end where it already is has nothing to run but the tidying up.
+      if level == 0 { view.mask = nil; view.needsDisplay = true }
+      return
+    }
+    let start = Date()
+    let span = Self.fadeMs / 1000 * Double(abs(level - from))
+    fading = Timer.scheduledTimer(withTimeInterval: 1 / 60, repeats: true) { [weak self] timer in
+      guard let self else { timer.invalidate(); return }
+      let progress = min(1, Date().timeIntervalSince(start) / span)
+      // Assigned outright at the end rather than interpolated up to it: a ramp between two decimals
+      // lands its last step a hair off, and exactly 1 is what says the mask is all the way in.
+      self.view.mask?.level = progress < 1 ? from + (level - from) * CGFloat(progress) : level
+      if progress >= 1 {
+        timer.invalidate()
+        self.fading = nil
+        if level == 0 { self.view.mask = nil }
+      }
+      self.view.needsDisplay = true
+    }
+  }
+
+  /// Stop whatever fade is turning, on the way out. A repeating timer outlives the session that
+  /// scheduled it: the run loop holds it, the overlay it redraws has been ordered out, and nothing
+  /// else ever ends it. The shutter exits are the ones that leave one in flight -- Return pressed
+  /// inside the tenth of a second the mask was still arriving in.
+  func stopFade() {
+    fading?.invalidate()
+    fading = nil
+  }
+
+  /// Take the mask off and wait for it to go. Only for the exits that end in nothing: an exit on
+  /// its way to a photograph is already waiting out a beat for the window server, and a fade in
+  /// front of that is either a delay on the shot or a half-lit mask inside it.
+  func fadeOutMask() {
+    hideMask()
+    // The tap is down by the time this runs, so the keys arriving during the fade go where the
+    // session is no longer in the way of. Bounded rather than run until the mask clears: this
+    // turns the run loop, and a fade that somehow never finished would hold the app in it.
+    let deadline = Date().addingTimeInterval(Self.fadeMs / 1000 + 0.1)
+    while view.mask != nil && Date() < deadline {
+      CFRunLoopRunInMode(.defaultMode, 1 / 60, false)
+    }
+  }
+
   /// Hold this candidate: mask around it, and restart the deadline, since every hold is a decision
   /// the run loop could not have known to wait for.
   func hold(_ index: Int) { hold(candidates[index], at: index) }
@@ -2009,7 +2126,9 @@ final class Session {
     holds += 1
     held = candidate
     heldIndex = index
-    view.selection = viewRect(candidate.rect)
+    let rect = viewRect(candidate.rect)
+    view.selection = rect
+    showMask(rect)
     view.notice = nil
     caret = nil
     anchor = 0
@@ -2088,6 +2207,7 @@ final class Session {
       dragPoint = point
       dragLast = point
       view.selection = nil
+      drawMask(nil)
       deadline = Date().addingTimeInterval(30)
       refresh()
     case .leftMouseDragged:
@@ -2113,7 +2233,9 @@ final class Session {
       }
       dragLast = point
       let rect = dragRect
-      view.selection = rect.isNull || rect.isEmpty ? nil : viewRect(rect)
+      let drawn = rect.isNull || rect.isEmpty ? nil : viewRect(rect)
+      view.selection = drawn
+      drawMask(drawn)
       deadline = Date().addingTimeInterval(30)
       refresh()
     case .leftMouseUp:
@@ -2127,6 +2249,7 @@ final class Session {
       let landed = windows.firstIndex { $0.frame.intersects(rect) }
       guard let landed, !rect.isNull, rect.width >= minimumDrag, rect.height >= minimumDrag else {
         view.selection = nil
+        drawMask(nil)
         refresh()
         return
       }
@@ -2139,6 +2262,7 @@ final class Session {
   func cancelDrag() {
     dragAnchor = nil
     view.selection = nil
+    drawMask(nil)
     refresh()
   }
 
@@ -2556,6 +2680,7 @@ final class Session {
     beforeEdit = nil
     view.selection = nil
     view.notice = nil
+    hideMask()
     refresh()
   }
 
@@ -2875,8 +3000,9 @@ final class Toast {
 
   /// Off the right edge rather than a fade in place: the corner is emptied by something leaving it,
   /// which reads at the edge of vision in a way a dimming rectangle does not. Unless motion has been
-  /// asked to stop, and then the dimming rectangle is exactly what is wanted -- this is the one
-  /// animation the app has, and travel across the corner of the eye is what the setting is about.
+  /// asked to stop, and then the dimming rectangle is exactly what is wanted -- this is the only
+  /// travel the app draws, and travel across the corner of the eye is what the setting is about.
+  /// The overlay's mask fades rather than moves, and so is left alone by it.
   private func slideOff() {
     let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
@@ -3102,6 +3228,12 @@ func runSession(_ options: Options) -> Outcome {
   CGEvent.tapEnable(tap: tap, enable: false)
   CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
   CFMachPortInvalidate(tap)
+  // A session that ends with nothing takes its mask off the way it put it on -- Escape, a second
+  // tap of the hotkey, or a hold left to expire. A session that ends with something does not: the
+  // overlay vanishing on the keystroke is the acknowledgement, and on the two exits that photograph
+  // anything a fade in front of the shutter is either a delay or a mask half-lit in the picture.
+  if session.chosen == nil { session.fadeOutMask() }
+  session.stopFade()
   overlay.orderOut(nil)
 
   // The copy key takes no picture, so there is nothing to wait for the compositor over.

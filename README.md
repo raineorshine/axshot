@@ -16,7 +16,10 @@ window instead. A region the front window takes half of is offered on the half t
 same way one running off the edge of the screen always has been.
 
 Typing a hint holds the region rather than firing the shutter: everything outside it is masked and
-`Return` takes the shot. The arrows adjust what is held — `←` and `→` step to the neighbouring
+`Return` takes the shot. The mask fades in rather than appearing, so what the eye follows is the
+darkness closing on the region it leaves clear and not the whole screen going dark at once, and it
+fades back out again wherever it leaves without a picture having been taken. The arrows adjust what
+is held — `←` and `→` step to the neighbouring
 region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
 does not have to be retyped, and `HJKL` do the same four things so the hand can stay on the letters.
 An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
@@ -162,7 +165,9 @@ Settings needs no mouse: Tab moves between the rows, Space or Return presses, an
 under Left and Right as the radio group they are. The letters on every plate clear 4.5:1 against
 both ends of its gradient, the chord recorder and the plates are named and pressable through the
 accessibility tree, and the shortcut list hands itself over as text as well as glyphs. The corner
-thumbnail fades in place rather than sliding when Reduce Motion is on. The overlay is the one part
+thumbnail fades in place rather than sliding when Reduce Motion is on; the mask's own fade is left
+alone by that setting, since a cross-fade is what it asks for in place of travel. The overlay is the
+one part
 that is not: it holds the whole keyboard while it is up, so `Escape` is the only key anything else
 can get, and the session expires on its own.
 
