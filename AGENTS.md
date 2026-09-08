@@ -35,7 +35,7 @@ testing over instead, and "When there is no Mac" below is what it does with the 
 | `axshot.swift` | everything: walk, filter, overlay, hotkeys, settings, CLI |
 | `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot`, installs it; `--no-install` stops before the install |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
-| `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard |
+| `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard, and the queue for it |
 | `scripts/wait-idle.sh` | blocks until the user has stopped typing, in front of anything that takes the foreground |
 
 The same binary is the app when launched with no arguments and a CLI when given any — the same
@@ -50,7 +50,9 @@ There is one installed app, `/Applications/Axshot.app`, and the permission grant
 signature rather than its path — so any build signed with the same certificate satisfies them
 wherever it sits. What is genuinely single is the running instance, which owns the global hotkeys,
 and the login item, which names one bundle path. `build.sh` compiles inside the checkout and installs
-from there through the lock, which refuses while another session is driving the app.
+from there through the lock, which refuses while another session is driving the app. A session that
+wants a held lock does not ask again later: `wait` queues it and blocks until the release hands it
+over, so parallel worktrees test in the order they arrived.
 
 ## Driving the app on a live machine
 
@@ -133,7 +135,7 @@ nothing left to do keeps the one for the last stage it reached.
 | | |
 |---|---|
 | `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
-| `🔓 ` | about to take the lock, or just released it |
+| `🔓 ` | about to take the lock — including queued and blocked on it — or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
 | `📦 ` | tested, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
@@ -246,6 +248,13 @@ explained where it is implemented.
   in a plain `NSWindow` the keystroke stays a `keyDown` that walks the responder chain and dies
   there unhandled. Both windows take it at the last step of that walk instead, which also leaves it
   behind whatever wanted the key first.
+- **A test lock that cannot move gives up rather than being made unstuckable.** Every way the queue
+  can stall ends in a bound or a recovery instead of a mechanism that prevents it: a wait gives up on
+  its own deadline and reports what it was waiting on, `dequeue` clears a queue whose head nobody can
+  move, `break` recovers an abandoned lock. Handing the lock straight to the next ticket, so that it
+  is never unheld, was weighed and turned down — it means rewriting ownership onto a process that has
+  not woken yet, tracking that process's liveness, and refreshing the snapshot wherever the live app
+  no longer matches it, to close a window that a refusal already covers.
 
 ## Changing the region filter
 
