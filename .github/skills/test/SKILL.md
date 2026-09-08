@@ -109,6 +109,19 @@ It returns as soon as nobody has typed for three seconds. Non-zero means they ar
 not retry past it and do not take the foreground anyway — park (`🚙 `), say the keyboard is busy, and
 let them name the moment.
 
+Then bracket the burst, so the user can see which windows are this session's and gets the foreground
+back when it ends:
+
+```bash
+bin/axshot --driving on
+# activate, drive, capture
+bin/axshot --driving off
+```
+
+`off` re-activates whatever had the foreground when `on` ran. It belongs at the end of every burst,
+not once at the end of the test — see
+[docs/testing.md](../../../docs/testing.md#saying-an-agent-has-the-foreground).
+
 Then drive a real capture through the hotkey, not just the CLI, and confirm three things: a file
 appeared with the timestamped name; its pixel dimensions are twice the reported rect on a Retina
 display; and **the overlay is not in the image**. That last one is the regression that would
@@ -163,6 +176,9 @@ Release first, then follow the `ship` skill.
 - **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
   seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
   not start one and walk away.
+- **The foreground is the user's too.** Every drive brings a window forward, and whatever the last
+  activation left in front is where their next keystroke lands. `--driving off` puts it back; a burst
+  that ends without it hands them an app nobody chose.
 - **The keyboard is the user's too.** They are typing in another app while this runs, and a burst
   begun mid-sentence steals the letter they were on and lands the rest in their editor. Nothing here
   activates an app, opens the overlay or posts a key without `./scripts/wait-idle.sh` returning

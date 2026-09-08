@@ -65,6 +65,41 @@ clock by exactly the same amount. So the gate belongs at the *start* of a burst 
 keys inside one — run straight after your own drive it spends the whole threshold waiting on its own
 echo, and nothing it can read would tell it the typist was itself.
 
+## Saying an agent has the foreground
+
+A burst brackets itself, immediately inside the idle gate and around everything that activates,
+posts a key or draws an overlay:
+
+    ./scripts/wait-idle.sh
+    bin/axshot --driving on
+    # activate the target, send the hint, send Return
+    bin/axshot --driving off
+
+`on` makes the running app border the frontmost window in the pink hint style, follow it from window
+to window, and put a shadow of the same pink under the pointer; `off` takes both down and
+re-activates whatever application had the foreground when `on` was issued. Neither draws anything in the process it is typed in — the border
+is a window belonging to the running app, and these two runs are the wire to it. So both report
+`app=none` and exit 3 when no app is running, which is the only thing that would say the burst was
+marking nothing.
+
+Three edges:
+
+- **Both marks are out of every screenshot, including the one being tested.** Their sharing type
+  excludes them, so a capture that runs while they are up photographs whatever they were drawn over.
+  Do not read a missing pink edge in a PNG as the border having failed; look at the screen. Judging
+  how either one *looks* means building with `sharingType = .readOnly` for the shot and reverting
+  after — there is no way to photograph what a capture is defined not to see.
+- **It expires after two minutes** and gives the foreground back on the way out, because the session
+  that would have run `off` is the one that can die mid-burst. A drive longer than that re-issues
+  `--driving on`, which pushes the deadline out rather than drawing a second border.
+- **`off` restores the application, not the window.** macOS brings that app's own front window, which
+  is the right one unless the user had a second window of the same app in front.
+
+A burst that can fail between the two ends should close itself from a trap rather than from the last
+line, or the border stays up until the ceiling catches it:
+
+    trap 'bin/axshot --driving off' EXIT
+
 ## Driving the overlay
 
 The hint overlay reads keys through a `CGEventTap`, which sees posted events, so AppleScript can
@@ -430,3 +465,9 @@ the keystrokes and no longer. What follows is what a run has to undo afterwards.
 A capture session takes the keyboard while its overlay is up, and a permission request can leave a
 system modal on screen. Both are fine when someone is watching and rude when they are not: quit any
 instance you started, and do not leave a dialog waiting on a person who has walked away.
+
+The foreground is the other thing to put back. Every drive brings some window forward, and the user's
+next keystroke goes wherever the last activation left it — which is how a test ends by typing into an
+app nobody chose. `bin/axshot --driving off` is what returns it, along with taking the border down,
+and it belongs at the end of every burst that ran `--driving on` rather than only at the end of the
+test.

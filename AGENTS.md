@@ -64,6 +64,14 @@ It gates the *start* of a burst and not the keys inside one, because no clock on
 separates a person's keypress from one this session posted;
 [docs/testing.md](docs/testing.md#waiting-for-the-keyboard) is the measurement and its edges.
 
+And say so while you hold it. `bin/axshot --driving on` opens a burst and `bin/axshot --driving off`
+closes it. While it is on, the app draws a pink border around whatever window is frontmost and a
+pink shadow on the pointer, so a window arriving uninvited reads as this session rather than as the
+machine misbehaving — and closing the burst hands the foreground back to whoever had it before the
+burst took it. Both ends belong to
+the burst and not to the test: a build the user is trying by hand is their own session at their own
+keyboard, and the border is off for it.
+
 Then hold the foreground for a second, not for a stretch: activate, send the hint, send Return, and
 let go. Everything that is not the keystrokes — reading `--dump` output, checking the PNG, deciding
 what the labels mean — happens before the sequence starts or after the capture lands, never in the
@@ -164,6 +172,15 @@ explained where it is implemented.
   button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader
   gets Escape and nothing else. [docs/accessibility.md](docs/accessibility.md) is the set of ways
   this looks done when it is not.
+- **A driven burst says it is one, and gives the foreground back.** `--driving on`/`off` brackets
+  it, and what is bracketed is the burst rather than the test lock — a border up for the whole time
+  the lock is held is a colour nobody sees by the second look, and the user testing by hand is not
+  being driven. The border is kept out of every screenshot by the window's sharing type rather than
+  by being hidden around each shutter: it is drawn on a window's own edge, which is inside a region
+  a capture clipped to that window can ask for, and the process taking the picture is not always the
+  process holding the border. Measured, not assumed — a `sharingType = .none` window photographs as
+  the desktop behind it.
+
 - **The app never takes focus.** Hint keys come from an event tap, and so do the clicks that aim
   the text box and the ones that draw a region — the overlay window ignores the mouse. A focused
   target redraws its title bar inactive, and the screenshot would show that; a window that accepted

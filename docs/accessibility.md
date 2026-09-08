@@ -6,6 +6,12 @@ a plate, a chord box, a thumbnail. A drawn control says nothing to either one un
 The rule is that a control is named in the tree, reachable by Tab, and legible at 4.5:1. The overlay
 is the exception, and [axshot.swift](../axshot.swift)'s header says why.
 
+The two drive marks — the band around the frontmost window and the shadow under the pointer — are
+outside that rule too, and for a nearer reason: they are drawn over somebody else's window rather
+than being controls, they answer no key, and a borderless window sitting above every application is
+the last thing a reader should have to step past to reach the one underneath. Neither is an element,
+and nothing about an agent holding the foreground reaches a screen reader today.
+
 What follows is the set of things that look like they are already working.
 
 ## Tab does nothing at all

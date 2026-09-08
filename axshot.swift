@@ -19,6 +19,7 @@
 //
 //   axshot --dump            list the regions that would be hinted, and exit
 //   axshot --pid 1           ask for Screen Recording and exit without drawing anything
+//   axshot --driving on|off  say that an agent has the foreground, and mark it while it holds
 //
 //   --bundle <id>     target this bundle id instead of the frontmost app
 //   --pid <n>         target this process, for when two instances of an app are running
@@ -342,6 +343,25 @@
 // rather than the terminal that launched it and one pair of grants serves both the app and the
 // shell. The app bundle is already its own responsible process and does not.
 //
+// --driving is the one mode that draws nothing where it is typed. A session driving the real app
+// posts keystrokes onto the keyboard a person is sitting at and brings windows forward that nobody
+// asked for, and from the outside that is indistinguishable from the machine doing it by itself. So
+// a burst brackets itself: --driving on before it takes the foreground, --driving off when it lets
+// go. While it holds, the running app draws a border around whatever window is frontmost, in the
+// pink of the hint style -- the plate colour picked for turning up in the fewest interfaces, which
+// is the property wanted here too -- and the pointer carries a shadow in the same pink, since a hand
+// reaching for the mouse is not looking at a window edge. Letting go puts the foreground back where
+// the burst found it. It marks the burst and not the test: a build being tried by hand is the user's own session,
+// and a border up for an hour is a colour nobody sees by the second look. The border is taken out of
+// every screenshot on the machine by the window's sharing type rather than by being hidden around
+// each shutter -- a band on a window's edge is inside the region a capture clipped to that window
+// could ask for, and the process photographing is not always the one holding the border. A frame
+// nobody turns off goes out after two minutes and gives the foreground back, since the session that
+// would have turned it off is the one that can die mid-burst. The border is drawn by a layer rather
+// than by hand, for the one thing it has to agree with: macOS rounds a window with a continuous
+// corner and no NSBezierPath draws that curve, so a band mitred by hand parts company with the
+// window at the four places it is most looked at.
+//
 // Exit codes (command line only): 0 captured or copied, 2 not trusted, 3 no target app, 4 no
 // candidate regions, 6 no window, 11 cancelled, 12 capture failed, 13 nothing to copy. A capture that failed for want of Screen
 // Recording says screen_recording=false on that line.
@@ -382,7 +402,7 @@ struct Options {
 }
 
 func usage() -> Never {
-  FileHandle.standardError.write("usage: axshot [--dump] [--bundle ID] [--pid N] [--out PATH] [--clipboard] [--min-size PT] [--max-hints N] [--hint-chars S] [--budget-ms N] [--no-prune] [--enhanced] [--prompt] [--delay-ms N]\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: axshot [--dump] [--bundle ID] [--pid N] [--out PATH] [--clipboard] [--min-size PT] [--max-hints N] [--hint-chars S] [--budget-ms N] [--no-prune] [--enhanced] [--prompt] [--delay-ms N]\n       axshot --driving on|off\n".data(using: .utf8)!)
   exit(64)
 }
 
@@ -510,6 +530,25 @@ func string(_ element: AXUIElement, _ name: String) -> String? {
 func attribute(_ element: AXUIElement, _ name: String) -> AnyObject? {
   var value: CFTypeRef?
   return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
+}
+
+/// The frontmost window of an application, as the tree reports it. An app with no window open
+/// answers AXFocusedWindow with its own application element, so insist on something that says it is
+/// a window; the fallback is for the apps that answer nothing at all.
+func focusedWindow(_ application: AXUIElement) -> AXUIElement? {
+  if let focused = attribute(application, kAXFocusedWindowAttribute), CFGetTypeID(focused) == AXUIElementGetTypeID() {
+    let window = focused as! AXUIElement
+    if string(window, kAXRoleAttribute) == kAXWindowRole { return window }
+  }
+  return (attribute(application, kAXWindowsAttribute) as? [AXUIElement])?.first
+}
+
+/// The screen's y-axis turned over. The tree reports frames from the top-left of the primary screen
+/// and AppKit draws from its bottom-left, and this is the whole of the difference -- it is its own
+/// inverse, so the same call converts either way and there is no second definition to disagree with.
+func flipY(_ rect: CGRect) -> CGRect {
+  let base = NSScreen.screens.first?.frame.maxY ?? 0
+  return CGRect(x: rect.minX, y: base - rect.maxY, width: rect.width, height: rect.height)
 }
 
 // MARK: - Candidates
@@ -846,6 +885,15 @@ enum HintStyle: String, CaseIterable {
     rounded.lineWidth = 1
     rounded.stroke()
     plateText(label).draw(at: CGPoint(x: plate.minX + Self.padding, y: plate.minY + Self.padding))
+  }
+
+  /// The style as one colour, for what outlines rather than fills. The drive frame is the only
+  /// caller: a four point band around a window is too thin for a gradient to read as one, and a band
+  /// that has to follow the system's own corner curve is drawn by a layer rather than by hand -- a
+  /// layer's border takes a colour and not a shading. Blended from the two stops rather than picked
+  /// out of the air, so a border and a plate cannot come to disagree about what pink is.
+  var line: NSColor {
+    gradient.top.blended(withFraction: 0.5, of: gradient.bottom) ?? gradient.top
   }
 }
 
@@ -2664,17 +2712,7 @@ func runSession(_ options: Options) -> Outcome {
     AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
   }
 
-  // An app with no window open answers AXFocusedWindow with its own application element, so insist
-  // on something that says it is a window.
-  var window: AXUIElement?
-  if let focused = attribute(appElement, kAXFocusedWindowAttribute), CFGetTypeID(focused) == AXUIElementGetTypeID() {
-    let element = focused as! AXUIElement
-    if string(element, kAXRoleAttribute) == kAXWindowRole { window = element }
-  }
-  if window == nil {
-    window = (attribute(appElement, kAXWindowsAttribute) as? [AXUIElement])?.first
-  }
-  guard let windowElement = window, let windowFrame = probe(windowElement).frame, !windowFrame.isEmpty else {
+  guard let windowElement = focusedWindow(appElement), let windowFrame = probe(windowElement).frame, !windowFrame.isEmpty else {
     return Outcome(code: 6, line: "app=\(name) windows=0 total_ms=\(millis(since: start))")
   }
 
@@ -2684,10 +2722,7 @@ func runSession(_ options: Options) -> Outcome {
     return Outcome(code: 6, line: "screens=0 total_ms=\(millis(since: start))")
   }
   let flipBase = primary.frame.maxY
-  func flip(_ rect: CGRect) -> CGRect {
-    CGRect(x: rect.minX, y: flipBase - rect.maxY, width: rect.width, height: rect.height)
-  }
-  let screenArea = screens.map { flip($0.frame) }.reduce(CGRect.null) { $0.union($1) }
+  let screenArea = screens.map { flipY($0.frame) }.reduce(CGRect.null) { $0.union($1) }
   let clip = windowFrame.intersection(screenArea)
 
   let walkStart = Date()
@@ -2732,7 +2767,7 @@ func runSession(_ options: Options) -> Outcome {
 
   let view = HintView(frame: CGRect(origin: .zero, size: overlayFrame.size))
   view.boxes = candidates.enumerated().map { index, candidate in
-    (labels[index], flip(candidate.rect).offsetBy(dx: -overlayFrame.minX, dy: -overlayFrame.minY))
+    (labels[index], flipY(candidate.rect).offsetBy(dx: -overlayFrame.minX, dy: -overlayFrame.minY))
   }
   overlay.contentView = view
   overlay.orderFrontRegardless()
@@ -3825,6 +3860,315 @@ final class HelpSheetView: NSView {
   }
 }
 
+// MARK: - Driving
+
+/// The pink frame that says an agent has the foreground.
+///
+/// Nothing about a driven run looks different from the outside. The windows that come forward are
+/// the user's own applications, the keystrokes arrive on the keyboard they are typing on, and the
+/// app doing it is the app they installed -- so a burst says so: `axshot --driving on` before it
+/// takes the foreground and `--driving off` when it lets go, and for as long as it holds, whatever
+/// window is frontmost is drawn with a border in the pink hint style. Pink because it is the plate
+/// colour chosen for appearing in the fewest interfaces, which is the same property wanted here.
+///
+/// It marks the *drive* and not the test. A build under the test lock that the user is trying by
+/// hand is their own session at their own keyboard, and a border up for the whole time the lock is
+/// held is a colour they would stop seeing by the second look. So the two ends belong to the burst.
+///
+/// Letting go puts the foreground back where it was found. Taking it is the price of driving the
+/// real app; keeping it afterwards means the user's next keystroke lands in whatever the burst
+/// activated last, which is the complaint the frame is drawn for and not one it answers by itself.
+///
+/// The window is excluded from screen capture rather than hidden around each shutter. A band drawn
+/// on a window's own edge is inside the region any capture clipped to that window could ask for,
+/// and this app is not the only process that photographs -- a command line run draws its own
+/// overlay in its own process and could not order this one out. `sharingType = .none` takes it out
+/// of every capture on the machine without either process having to know about the other.
+final class DriveFrame {
+  /// One name, and the object says which end. Distributed notifications match on the object and it
+  /// has to be a string, so this is what the daemon will carry.
+  private static let name = Notification.Name("com.raine.axshot.driving")
+
+  /// How long a burst may hold the frame before it is given back unasked. A drive is seconds and the
+  /// longest thing inside one is a transcription at ninety, so this clears both; what it is sized
+  /// for is the session that dies mid-burst, which would otherwise leave the border up and the
+  /// foreground somewhere the user did not put it until the app is quit. `--driving on` again pushes
+  /// it out, which is how a longer drive asks for more.
+  private static let ceiling: TimeInterval = 120
+
+  /// How much room the pointer's shadow gets. Big enough to read as cast by the arrow and not as a
+  /// dot beside it, small enough that it is still the pointer being looked at.
+  private static let halo = CGSize(width: 46, height: 46)
+
+  private static var current: DriveFrame?
+
+  private let window: NSWindow
+  private let view: DriveFrameView
+  /// The shadow that follows the pointer. Its own window, because a window is the only thing this
+  /// app can put on screen without taking the keyboard, and the pointer is somewhere the band is not.
+  private let pointer: NSWindow
+  /// Whoever had the foreground when the burst began.
+  private let interrupted: NSRunningApplication?
+  private var timer: Timer?
+  private var watch: NSObjectProtocol?
+  private var mouse: Any?
+  private var deadline = Date()
+
+  /// Listens for both ends. Registered by the menu bar app and by nothing else: the frame is a
+  /// window, and a command line run exits before one would be worth drawing.
+  static func observe() {
+    DistributedNotificationCenter.default().addObserver(forName: name, object: nil, queue: .main) { note in
+      if (note.object as? String) == "on" { begin() } else { end() }
+    }
+  }
+
+  /// Says which end from a process that is not the app. Nothing is drawn here -- this is the wire.
+  static func post(on: Bool) {
+    DistributedNotificationCenter.default().postNotificationName(
+      name, object: on ? "on" : "off", userInfo: nil, deliverImmediately: true)
+  }
+
+  private static func begin() {
+    if let current { current.deadline = Date().addingTimeInterval(ceiling); return }
+    current = DriveFrame()
+  }
+
+  private static func end() {
+    current?.close()
+    current = nil
+  }
+
+  private init() {
+    interrupted = NSWorkspace.shared.frontmostApplication
+    let area = NSScreen.screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
+    window = NSWindow(contentRect: area, styleMask: .borderless, backing: .buffered, defer: false)
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    window.hasShadow = false
+    window.ignoresMouseEvents = true
+    // Above the hint overlay rather than beside it. Two windows at the same level are ordered by
+    // whichever went front last, and a frame that ended up underneath would be the one thing on
+    // screen the overlay's mask was not drawn to dim.
+    window.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+    window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    window.sharingType = .none
+    // Half, on the window rather than in the colours, so the band and the outline holding its shape
+    // go down together. It is up for as long as a burst runs and sits on top of what the user is
+    // reading underneath it: it has to be unmissable at a glance and not worth looking away from.
+    window.alphaValue = 0.5
+    view = DriveFrameView(frame: CGRect(origin: .zero, size: area.size))
+    view.origin = area.origin
+    window.contentView = view
+    window.orderFrontRegardless()
+
+    pointer = NSWindow(contentRect: CGRect(origin: .zero, size: Self.halo), styleMask: .borderless,
+                       backing: .buffered, defer: false)
+    pointer.isOpaque = false
+    pointer.backgroundColor = .clear
+    pointer.hasShadow = false
+    pointer.ignoresMouseEvents = true
+    // One above the band, since it marks a thing that moves across it.
+    pointer.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+    pointer.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    pointer.sharingType = .none
+    pointer.alphaValue = 0.6
+    pointer.contentView = DriveCursorView(frame: CGRect(origin: .zero, size: Self.halo))
+    pointer.orderFrontRegardless()
+
+    deadline = Date().addingTimeInterval(Self.ceiling)
+    follow()
+    trackPointer()
+    // Two ways of asking, because they answer different halves. The notification is what makes a
+    // switch between applications look instant; the timer is for a window moved, resized or replaced
+    // inside the one that is already frontmost, which nothing posts. Both stop with the burst -- an
+    // idle app is back to costing nothing, which is the whole reason the tree is not cached either.
+    watch = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+        self?.follow()
+      }
+    // Mouse-moved is not posted to an app that is not frontmost, so this is a global monitor and not
+    // a window's own tracking: the app is never frontmost, which is the whole of why it can watch.
+    mouse = NSEvent.addGlobalMonitorForEvents(
+      matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]) { [weak self] _ in
+        self?.trackPointer()
+      }
+    timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      if Date() >= self.deadline { DriveFrame.end(); return }
+      self.follow()
+      // The monitor catches every move a person makes; this catches the pointer being put somewhere
+      // rather than moved there, which posts nothing at all.
+      self.trackPointer()
+    }
+  }
+
+  /// Under the arrow rather than around its tip. The hotspot is the tip and the arrow hangs down and
+  /// to the right of it, so the shadow is offset the same way -- centred on the arrow's body, in the
+  /// direction a shadow falls, instead of ringing the one point the pointer is not drawn at.
+  private func trackPointer() {
+    let at = NSEvent.mouseLocation
+    pointer.setFrameOrigin(CGPoint(x: at.x + 5 - Self.halo.width / 2,
+                                   y: at.y - 7 - Self.halo.height / 2))
+  }
+
+  /// Where the band goes: around the frontmost window, read the way a capture reads it.
+  private func follow() {
+    view.box = box().map { $0.offsetBy(dx: -view.origin.x, dy: -view.origin.y) }
+  }
+
+  private func box() -> CGRect? {
+    let area = NSScreen.screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
+    guard let app = NSWorkspace.shared.frontmostApplication else { return area }
+    // Our own windows are read off AppKit, which already has them in the space this draws in. The
+    // settings window is one a driven burst opens, and asking the accessibility API about the
+    // process it is running in is asking the app to be trusted to inspect itself.
+    if app.processIdentifier == getpid() {
+      return (NSApp.keyWindow ?? NSApp.mainWindow)?.frame ?? area
+    }
+    let element = AXUIElementCreateApplication(app.processIdentifier)
+    // The frame is redrawn five times a second and an app that has stopped answering must not take
+    // the drawing down with it. Deliberately no AXManualAccessibility here: that switch is what
+    // turns a Chromium app's accessibility engine on, and a burst is not a reason to leave it on --
+    // a window's own frame is exposed without it, and only the content inside needs asking.
+    AXUIElementSetMessagingTimeout(element, 1)
+    guard let window = focusedWindow(element), let frame = probe(window).frame, !frame.isEmpty else {
+      // An application frontmost with no window open -- the Finder on a bare desktop -- still has
+      // the machine, so the band says so around the screen rather than going out.
+      return area
+    }
+    return flipY(frame).intersection(area)
+  }
+
+  private func close() {
+    timer?.invalidate()
+    if let watch { NSWorkspace.shared.notificationCenter.removeObserver(watch) }
+    if let mouse { NSEvent.removeMonitor(mouse) }
+    window.orderOut(nil)
+    pointer.orderOut(nil)
+    guard let interrupted, !interrupted.isTerminated,
+          interrupted.processIdentifier != getpid() else { return }
+    interrupted.activate(options: [])
+  }
+}
+
+/// The band itself, drawn as layers rather than by hand, because the one thing it has to agree with
+/// is the shape of the window underneath it. macOS rounds a window with a continuous corner -- a
+/// squircle, fuller through the diagonal than a circle of the same radius -- and `NSBezierPath` has
+/// no such curve, so a hand-drawn band diverges from the window edge at exactly the four places it
+/// is most looked at. `cornerCurve = .continuous` is that curve, and a layer is the only thing that
+/// offers it.
+///
+/// Not an accessibility element and deliberately so: it is a mark drawn over somebody else's window
+/// rather than a control, it answers no key, and a borderless window sitting over every app is the
+/// last thing a reader should have to step through to get past. The overlay is out of the tree for
+/// the same reason and says as much in the header.
+final class DriveFrameView: NSView {
+  /// The system's own window corner, in points. Measured rather than assumed: a plain AppKit window
+  /// was photographed against the desktop and its arc compared, row by row, against continuous
+  /// corners drawn at 10 through 20. Sixteen matched to under a device pixel, where fourteen and
+  /// eighteen were an order of magnitude further out. It is an OS constant and not an API, so it is
+  /// worth re-measuring the same way if the system's window shape changes under it.
+  private static let radius: CGFloat = 16
+  /// The solid band on the window's own edge.
+  private static let band: CGFloat = 4
+  /// The shadow cast inward from it, as concentric borders rather than as a blur. A blurred shadow
+  /// needs a path to be cast from and the only exact one here is a curve no path can hold, so the
+  /// falloff is drawn out of the same curve instead: each step is a layer, so every ring is the
+  /// window's corner again rather than an approximation of it.
+  private static let steps = 16
+  private static let step: CGFloat = 1
+
+  /// The frame window's own origin, so a box in screen coordinates can be drawn in view ones.
+  var origin = CGPoint.zero
+  var box: CGRect? {
+    didSet { if box != oldValue { place() } }
+  }
+
+  private let edge = CALayer()
+  private var glow: [CALayer] = []
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    let pink = HintStyle.pink.line
+    edge.borderColor = pink.cgColor
+    edge.borderWidth = Self.band
+    edge.cornerCurve = .continuous
+    layer?.addSublayer(edge)
+    for i in 0..<Self.steps {
+      let ring = CALayer()
+      // Quadratic, so the shadow leaves the band quickly and then trails off, which is what an inset
+      // shadow looks like and what a linear ramp reads as a stack of rings instead.
+      let fade = pow(1 - CGFloat(i) / CGFloat(Self.steps), 2)
+      ring.borderColor = pink.withAlphaComponent(0.34 * fade).cgColor
+      ring.borderWidth = Self.step
+      ring.cornerCurve = .continuous
+      layer?.addSublayer(ring)
+      glow.append(ring)
+    }
+    place()
+  }
+
+  required init?(coder: NSCoder) { nil }
+
+  override var isFlipped: Bool { false }
+  override func isAccessibilityElement() -> Bool { false }
+
+  private func place() {
+    // A layer moved without this animates itself into position, and a band that slides after the
+    // window it is marking is a band that is wrong for as long as the slide lasts.
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    defer { CATransaction.commit() }
+    guard let box else {
+      edge.isHidden = true
+      glow.forEach { $0.isHidden = true }
+      return
+    }
+    let rect = box.offsetBy(dx: -origin.x, dy: -origin.y)
+    edge.isHidden = false
+    edge.frame = rect
+    edge.cornerRadius = Self.radius
+    for (i, ring) in glow.enumerated() {
+      // Concentric: inset by d, the corner is d smaller, and past the radius it is a corner no
+      // longer -- which is what insetting a rounded rect that far actually leaves.
+      let inset = Self.band + CGFloat(i) * Self.step
+      ring.isHidden = false
+      ring.frame = rect.insetBy(dx: inset, dy: inset)
+      ring.cornerRadius = max(0, Self.radius - inset)
+    }
+  }
+}
+
+/// The pointer, said the same way. The band marks the window a burst is working in; a person
+/// reaching for the mouse is not looking at a window edge, and the pointer is the one thing on
+/// screen they are certain to be looking at. So it carries a pink shadow for as long as the burst
+/// runs -- offset down and right, where a shadow falls, rather than a ring centred on the tip, which
+/// reads as a target and not as something being cast.
+///
+/// It follows rather than replaces. A background app cannot set the system cursor -- `NSCursor` only
+/// reaches a cursor rect in a window of the app that owns the keyboard, which is the one thing this
+/// app must never be -- so the shadow is a small window of its own, tracking the pointer off a global
+/// mouse monitor. It trails the hardware cursor by a frame under a fast flick, which is the price,
+/// and it is not one a driven burst pays: a burst moves the keyboard, and the pointer is sitting
+/// wherever the user left it.
+final class DriveCursorView: NSView {
+  override var isFlipped: Bool { false }
+  override func isAccessibilityElement() -> Bool { false }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor.clear.set()
+    dirtyRect.fill()
+    let pink = HintStyle.pink.line
+    let centre = CGPoint(x: bounds.midX, y: bounds.midY)
+    // A core that holds its colour before it falls away, rather than a linear ramp -- a shadow has an
+    // edge somewhere, and a straight fade from the centre reads as a smudge beside the pointer.
+    NSGradient(colors: [pink.withAlphaComponent(0.95), pink.withAlphaComponent(0.8), pink.withAlphaComponent(0)],
+               atLocations: [0, 0.35, 1], colorSpace: .deviceRGB)?
+      .draw(fromCenter: centre, radius: 0, toCenter: centre, radius: bounds.width / 2, options: [])
+  }
+}
+
 // MARK: - Menu bar app
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -3837,6 +4181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before anything is built, so the first window drawn is already the right one rather than a
     // window that changes colour once it is on screen.
     Settings.theme.apply()
+
+    // Costs nothing until something says a burst has started, which is why it is registered here
+    // rather than being something the app has to be launched a particular way to get.
+    DriveFrame.observe()
 
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     statusItem.button?.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Axshot")
@@ -3963,6 +4311,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Entry
 
 let arguments = Array(CommandLine.arguments.dropFirst()).filter { $0 != "--worker" }
+
+if arguments.first == "--driving" {
+  // Says so and exits. The frame belongs to the running app and this process is only the way to
+  // tell it, so it needs no permission and no bundle identity of its own -- which is why it goes
+  // ahead of the disclaimed re-spawn rather than through it.
+  guard arguments.count == 2, arguments[1] == "on" || arguments[1] == "off" else { usage() }
+  let app = NSRunningApplication.runningApplications(withBundleIdentifier: Settings.domain).first
+  DriveFrame.post(on: arguments[1] == "on")
+  // A burst that turned the frame on and drew nothing is a burst driving an app that is not there,
+  // and the outcome line is the only place that would say so.
+  print("driving=\(arguments[1]) app=\(app == nil ? "none" : "running")")
+  exit(app == nil ? 3 : 0)
+}
 
 if arguments.isEmpty {
   let application = NSApplication.shared
