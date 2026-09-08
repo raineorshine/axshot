@@ -78,6 +78,19 @@ git fetch origin && git rebase origin/main
 Resolve conflicts, preferring the branch changes unless clearly wrong, then `git add` and
 `git rebase --continue`, repeating until it completes.
 
+**"Prefer the branch" is about changes, not about whole files.** A worktree cut before something
+landed holds the old copy of every file that change touched, and a session that rewrote one of those
+files from its own context hands the rebase a pre-feature version of the lot rather than a hunk.
+Preferring that side reverts the other change with no marker and no mention of it in the message —
+which is how a commit about the `?` key list came to delete the test lock queue. So before resolving
+a conflict in a file this branch did not set out to change, ask what else is in it:
+
+```bash
+git log --oneline $(git merge-base HEAD origin/main)..origin/main -- <file>
+```
+
+Anything listed there that your side does not contain is about to be undone.
+
 **A clean merge is not a working one, and the key handler is where that bites.** Git conflicts on
 adjacent lines, not on meaning: a branch that landed first can have added an early guard that
 returns before the code you are rebasing is ever reached — every chord under a modifier swallowed,

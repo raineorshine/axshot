@@ -22,7 +22,12 @@ Two skills live in `.github/skills/`: `test` installs this branch's build into t
 mutex and drives it, `ship` lands the change on `origin/main`. Read the one that matches what you are
 about to do, before doing it — `.github/skills/` is not a directory the `Skill` tool loads from, so
 these are files to open and follow by hand, and asking for one by name only reports that no such
-skill exists. A change to anything the user sees or touches is always about to be tested, and nobody
+skill exists. A skill that describes a command its script does not have is the sign of one of these
+being clobbered rather than of a stale document, and the repair is in git rather than in a rewrite:
+`git log --oneline -- <path>` finds the commit that added it, and a later copy that is byte-identical
+to the version from before confirms it was reverted wholesale. Take that file back whole where
+nothing has touched it since, and reverse the bad commit's hunks with `git apply -R --3way` where
+something has. A change to anything the user sees or touches is always about to be tested, and nobody
 has to ask for it: a clean compile is not a place to stop and hand back, because the thing the user
 would look at is not on their machine until `test` has put it there. That holds for a session on the
 user's Mac, which is the only place either skill can run; one that is somewhere else hands the
@@ -131,6 +136,14 @@ never had a stage at all. A session is named by the harness and so begins withou
 first prefix on that inherited title is part of the first response, not something to wait for a
 stage change to prompt. A prefix comes off only when another replaces it, so a session that has
 nothing left to do keeps the one for the last stage it reached.
+
+**Ask which session this is before renaming one.** `get_session "self"` is the only answer, and it
+changes under a fork: a forked session carries the whole transcript, the id it read earlier in that
+transcript, and a different id of its own, so a rename that reuses the remembered one retitles the
+session it forked *from* — which is generally the one still holding the lock, and whose title is
+therefore the one the sidebar most needs to be true. A fork also starts in the worktree of whatever
+session it forked from. Nothing stops a branch being checked out there, and it moves that worktree
+under the other session's feet; put it back on the branch it was on when the work is landed.
 
 | | |
 |---|---|
