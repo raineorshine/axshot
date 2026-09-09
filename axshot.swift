@@ -281,12 +281,17 @@
 // unmodified arrows are how another window is reached from a held region, and the hints are how it
 // is reached from nothing.
 //
-// An arrow pressed with the hints still up holds the outermost region instead, which is where every
-// other region can be reached from -- so the screen can be walked without ever picking a letter, for
-// when nothing lettered is close and reading the hints is more work than stepping. Only the arrows
-// do this, since HJKL are still hints until something is held. It is also the one place Option-Down
-// has no ascent to retrace, so there it falls back to the held region's first child in document
-// order; without that the entry point would only ever lead outwards.
+// An arrow pressed with the hints still up holds the largest region instead -- so the screen can be
+// walked without ever picking a letter, for when nothing lettered is close and reading the hints is
+// more work than stepping. Every region is reachable from every other one, the screen steps crossing
+// the window boundary the tree steps stop at, so what the entry point owes is somewhere to start
+// reading rather than a root: the biggest box holds the most of the others, and it is no longer the
+// window, which stopped being a region. The first in document order would be neither -- with the
+// window's box gone that is whatever the frontmost window's layout begins with, as often a sidebar
+// as the thing worth capturing. Only the arrows do this, since HJKL are still hints until something
+// is held. It is also the one place Option-Down has no ascent to retrace, so there it falls back to
+// the held region's first child in document order; without that the entry point would only ever
+// lead outwards.
 //
 // A region can also be drawn by hand, for what the tree does not describe: a slide, a video, a
 // corner of a canvas, half a paragraph, an app whose accessibility is one box the size of its
@@ -450,6 +455,23 @@
 // the size of the screen: counted as cover it culled every window on the machine, and a capture
 // taken while an agent said it had the foreground ended "no window" -- including the capture the
 // agent was driving.
+//
+// And never the whole window. A box the size of the window it was found in is the shot
+// Command-Shift-4 and then Space already takes, and it was standing in front of the region worth
+// having: the nesting collapse keeps an outer box that swallows an inner one unless the inner is
+// more than two thirds of it, and a window's content area usually is -- so dropping the window is
+// what puts a file list, a browser's page and a sidebar's neighbour on the screen as regions of
+// their own.
+//
+// It is a size test and not a role test, because the window is never one element: the window, its
+// content view and whatever split or group they wrap all report the same frame, so dropping the
+// AXWindow by role hands the same rectangle straight to its child, which is the same hint one letter
+// along. What the size is compared against is the window as a candidate would carry it -- clipped to
+// the screen and cropped to the largest piece no window in front covers -- so a window showing a
+// strip of itself loses the strip-sized box for the same reason it loses the whole one. The window's
+// parts are untouched however large, a page filling everything below a toolbar being a region and
+// not a window; an app whose accessibility is one box the size of its window offers no hints at all,
+// which is the case the drag is there for.
 //
 // The overlay never appears in the shot, bar the one shot that is of the overlay. It is a
 // borderless window at screen-saver level that is ordered out before the capture runs, with
@@ -944,6 +966,14 @@ final class Walk {
     self.options = options
   }
 
+  /// This window's own box, as a candidate filling it would be recorded: clipped to the screen and
+  /// cropped to the largest piece nothing in front covers. What fills a window is a run of elements
+  /// rather than one, all reporting the same frame, so this is what the filter measures against
+  /// instead of asking for a role.
+  var box: CGRect {
+    exposed(clip, under: occluders).max { $0.width * $0.height < $1.width * $1.height } ?? .null
+  }
+
   func measure(_ element: AXUIElement) {
     let start = Date()
     run(element)
@@ -1086,23 +1116,31 @@ func nearlyEqual(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 4) -> Bool {
 let nestingRatio: CGFloat = 1.5
 
 /// The tree is mostly nested containers that repeat their child's box, and hinting them raw stacks a
-/// dozen hints on the same pixels. Three passes: drop exact repeats, drop wrappers that say nothing
-/// and hold one child, then walk largest-first and drop anything an already-kept box swallows
-/// without growing much. Document order is restored at the end so the hints read down the page --
-/// front window first, since that is the order the windows were walked in.
+/// dozen hints on the same pixels. Four passes: drop the boxes that are their own window, drop exact
+/// repeats, drop wrappers that say nothing and hold one child, then walk largest-first and drop
+/// anything an already-kept box swallows without growing much. Document order is restored at the end
+/// so the hints read down the page -- front window first, since that is the order the windows were
+/// walked in.
 ///
-/// All three compare within one window. The cap on hints is the only thing that is shared, which is
-/// what makes it the cap it says it is; a box in the window behind that a box in the window in front
-/// happens to sit inside is not a repeat of it, and collapsing the two would take away the region
-/// the second window was walked for.
+/// All four compare within one window, `windows` holding each walk's own box under the index its
+/// candidates are stamped with: the rectangle an element filling that window would be recorded at,
+/// clipped to the screen and cropped to the largest piece nothing in front covers. A box that size
+/// is the whole window, which is the shot Command-Shift-4 and then Space already takes, and it is
+/// never one element -- the window, its content view and whatever split or group they wrap all
+/// report the same frame -- so dropping it by role would hand the same rectangle to its child, one
+/// letter along. The cap on hints is the only thing that is shared, which is what makes it the cap
+/// it says it is; a box in the window behind that a box in the window in front happens to sit inside
+/// is not a repeat of it, and collapsing the two would take away the region the second window was
+/// walked for.
 ///
 /// Largest-first spends that cap on the front window without being told to. A window behind is
 /// partly covered by definition, so its boxes are the clipped ones and rank below the whole ones in
 /// front: a crowded desktop cut to twenty hints kept fourteen of them in the front window.
-func filter(_ candidates: [Candidate], max limit: Int) -> [Candidate] {
+func filter(_ candidates: [Candidate], max limit: Int, windows: [CGRect]) -> [Candidate] {
   var seen = Set<String>()
   var distinct: [(offset: Int, candidate: Candidate)] = []
   for (offset, candidate) in candidates.enumerated() {
+    if nearlyEqual(candidate.rect, windows[candidate.window]) { continue }
     if candidate.generic && candidate.childCount <= 1 { continue }
     if !seen.insert("\(candidate.window):\(gridKey(candidate.rect))").inserted { continue }
     if distinct.contains(where: { $0.candidate.window == candidate.window && nearlyEqual($0.candidate.rect, candidate.rect) }) { continue }
@@ -2236,13 +2274,19 @@ final class Session {
       }
       return
     }
-    // An arrow with nothing held enters the tree rather than being ignored: the outermost region
-    // is the one place every other region can be reached from, and the arrows take it from there.
+    // An arrow with nothing held enters the screen rather than being ignored, at the largest region
+    // on it: these steps reach every other region from anywhere, crossing the window boundary the
+    // tree steps stop at, so what the entry point owes is somewhere to start reading rather than a
+    // root. By area and not by document order -- with the window's own box no longer a region, the
+    // first of them is whatever the front window's layout begins with, as often a sidebar as
+    // anything worth capturing. A partly covered window's boxes are the cropped ones, so the
+    // largest is in the window in front without that having to be asked for.
     if [123, 124, 125, 126].contains(keyCode) {
-      guard !candidates.isEmpty else { NSSound.beep(); return }
+      guard let largest = candidates.indices.max(by: { candidates[$0].area < candidates[$1].area })
+      else { NSSound.beep(); return }
       typed = ""
       descent = []
-      hold(0)
+      hold(largest)
       return
     }
     if keyCode == 51 {  // delete
@@ -2923,8 +2967,8 @@ final class Session {
   /// Back in to whatever Up was last looking at, or, with no ascent to retrace, into the held
   /// region's first child in document order. Containment alone would not say which child to pick --
   /// a container holds many -- so a remembered descent always wins; the first child is only what
-  /// makes the tree reachable inward at all when an arrow entered at the outermost region rather
-  /// than a hint picked one.
+  /// makes the tree reachable inward at all when an arrow entered at the largest region rather than
+  /// a hint picked one.
   func descend() {
     if let child = descent.popLast() { hold(child); return }
     guard let index = heldIndex, candidates.indices.contains(index + 1),
@@ -3509,7 +3553,7 @@ func runSession(_ options: Options) -> Outcome {
   let walkMs = millis(since: walkStart)
   let visited = walks.reduce(0) { $0 + $1.visited }
   let boxes = walks.reduce(0) { $0 + $1.found.count }
-  let candidates = filter(walks.flatMap { $0.found }, max: options.maxHints)
+  let candidates = filter(walks.flatMap { $0.found }, max: options.maxHints, windows: walks.map { $0.box })
   let labels = hintLabels(count: candidates.count, alphabet: options.hintChars)
 
   if options.dump {
@@ -3528,9 +3572,10 @@ func runSession(_ options: Options) -> Outcome {
     return Outcome(code: 0, line: "")
   }
 
-  guard !candidates.isEmpty else {
-    return Outcome(code: 4, line: "windows=\(targets.count) visited=\(visited) candidates=0 walk_ms=\(walkMs) total_ms=\(millis(since: start))")
-  }
+  // No hints is a session all the same, since the drag needs none: an app whose accessibility is one
+  // box the size of its window is precisely what a rectangle drawn by hand is for, and refusing to
+  // put the overlay up would take away the one way left to capture it. The crosshair is on screen,
+  // and Escape or the hotkey closes an empty overlay as it closes any other.
 
   let overlayFrame = screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
   // The window still lets every mouse event through to whatever is underneath, and the mouse is

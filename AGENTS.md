@@ -192,6 +192,12 @@ explained where it is implemented.
   reach one by hint. The window server culls the covered windows before any accessibility message is
   sent, which on a crowded desktop is most of them; what survives is a handful of separate processes,
   and waiting on those one at a time is waiting the machine did not have to do.
+- **The window itself is never a region.** A box the size of the window is the shot ⌘⇧4 then Space
+  already takes, and it was standing in front of the region worth having: the nesting collapse drops
+  an inner box the outer one swallows unless the inner is more than two thirds of it, which a content
+  area usually is. The test is the size and not the role — the window, its content view and the group
+  they wrap all report the same frame, so dropping the AXWindow alone re-offers the same rectangle one
+  letter along. An app whose accessibility is one box the size of its window is what the drag is for.
 - **Only text that was on screen is copied.** The tree carries names written for screen readers
   alongside the words a person can read, and no attribute separates them — the same field holds a
   button's visible label and an icon's stand-in name — so the test is whether the text would have

@@ -24,7 +24,7 @@ fades back out again wherever it leaves without a picture having been taken. The
 is held: each of the four holds the nearest *leaf* region that way on screen, across the window
 boundary and all, so a hint that lands near the mark does not have to be retyped and what is next to
 it on screen is reached by pointing at it. `HJKL` do the same four things so the hand can stay on the
-letters. An arrow pressed while the hints are still up holds the outermost region, so the screen can
+letters. An arrow pressed while the hints are still up holds the largest region, so the screen can
 be walked without typing a letter at all. `⌥` with any of them walks the tree instead — `⌥←` `⌥→`
 step to the neighbouring region, `⌥↑` widens to the one enclosing it, `⌥↓` goes back in — which is
 how a container is reached at all, the unmodified keys landing only on leaves; those three stay
@@ -272,13 +272,16 @@ grant, and what to do when one is listed but denied.
       w1 Preview pid=18770 (0,34 850x922) over=1 visited=32 boxes=5 walk_ms=20
       w2 Finder pid=1580 (311,190 848x610) over=3 visited=58 boxes=27 walk_ms=21
       w3 Brave pid=39523 (735,34 735x922) over=3 visited=235 boxes=86 walk_ms=23
-      s w0 AXWindow AXStandardWindow depth=0 (0,34 735x922) "Claude"
-      a w0 AXGroup AXLandmarkComplementary depth=13 (0,34 215x922) "Sidebar"
+      s w0 AXGroup AXLandmarkComplementary depth=13 (0,34 215x922) "Sidebar"
+      a w0 AXGroup depth=14 (215,34 520x922)
       ...
 
-`boxes` is what survived the visibility filter, `candidates` what survived the nesting collapse. A
-page that hints the same pixels a dozen times over wants `--min-size` or `nestingRatio` looked at;
-one that misses a region wants `--no-prune` tried first.
+`boxes` is what survived the visibility filter, `candidates` what survived the nesting collapse.
+Part of the gap between them is each window's own box: a region the size of the window it was found
+in is dropped before anything else, so the first hint of a window is the first thing *inside* it —
+here the sidebar, and behind it the pane the window's box had been swallowing. A page that hints the
+same pixels a dozen times over wants `--min-size` or `nestingRatio` looked at; one that misses a
+region wants `--no-prune` tried first.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a

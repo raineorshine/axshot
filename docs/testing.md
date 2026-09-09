@@ -156,9 +156,10 @@ something else entirely: nothing in the run says the target moved. Aim at someth
 redraw, and check what came back rather than what was asked for.
 
 A drive that needs only *a* starting region can name nothing at all. An arrow with the hints up
-holds the outermost region, and the arrows reach every other region from there, so a sequence of
-arrows has no label in it to be renumbered — and `--focused --bundle` narrows the candidate list to
-one window, which is the other half of holding it still.
+holds the largest region, and the arrows reach every other region from there, so a sequence of
+arrows has no label in it to be renumbered — and it is a region a dump of the same burst names
+outright, being the one the areas sort to the top. `--focused --bundle` narrows the candidate list
+to one window, which is the other half of holding it still.
 
 That is what makes a change to the rule that *picks* the next region checkable to the point, rather
 than to plausibility: reimplement the rule over a `--dump` taken inside the same burst, and the
