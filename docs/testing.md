@@ -155,6 +155,18 @@ The typed label is still *a* valid label, so a region is held, the shutter fires
 something else entirely: nothing in the run says the target moved. Aim at something that does not
 redraw, and check what came back rather than what was asked for.
 
+A drive that needs only *a* starting region can name nothing at all. An arrow with the hints up
+holds the outermost region, and the arrows reach every other region from there, so a sequence of
+arrows has no label in it to be renumbered — and `--focused --bundle` narrows the candidate list to
+one window, which is the other half of holding it still.
+
+That is what makes a change to the rule that *picks* the next region checkable to the point, rather
+than to plausibility: reimplement the rule over a `--dump` taken inside the same burst, and the
+expected `rect=` is a value rather than a judgement. Equality is then the assertion, and it catches
+a rule ported wrong in one direction while the other three look right — which no eye on a
+screenshot would. It costs a second implementation of the rule, so it earns its keep on the rules
+worth two, and the dump has to come from the burst rather than from before it.
+
 Which is the reason to drive `bin/axshot --out` rather than the hotkey whenever the question is
 *which* region was captured. Its outcome line names the app, the role and the rect actually held, and
 the instance running from the menu bar prints that nowhere. A rect alone stopped being enough once
@@ -173,7 +185,10 @@ Return land in whatever the drive activated.
 The layer is the whole test, not the owner. Every burst is bracketed by `--driving on`, and its
 border is a window of the same app one level above the overlay's — so a poll for "a window owned by
 Axshot" is satisfied by that border before the session exists, and reports the overlay up the
-instant the burst opened.
+instant the burst opened. Nor is the owner a fixed string to match against: it is the process name,
+so the installed bundle owns `Axshot` and a `bin/axshot` run owns `axshot`. A probe comparing it
+exactly sees the app it was not driving and never fires for the one it was, which reads as an
+overlay that never came up rather than as a probe that cannot see it.
 
 Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks
@@ -283,6 +298,13 @@ which exists only while the app is regular:
     osascript -e 'tell application "System Events" to tell process "Axshot" to click menu bar item 1 of menu bar 2' \
               -e 'delay 0.5' \
               -e 'tell application "System Events" to tell process "Axshot" to click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2'
+
+Photographing what those open is `screencapture -l <window id>`, and the id comes from the same
+`CGWindowListCopyWindowInfo` the overlay is polled with — but not at the same layer, and not at 0
+either: the shortcut sheet is a panel and sits at 3. Ask for the app's windows and read the layer
+back rather than assuming one, or the probe reports no window and the sheet looks like it failed to
+open. Unlike the overlay these are ordinary windows that a capture can see, which is why they can be
+photographed at all.
 
 `build.sh` relaunches the app as part of installing, and the status item is not in the menu bar the
 instant the process is. A script that drives `menu bar 2` in the same breath fails with `Invalid
