@@ -13,7 +13,9 @@ Every window and not just the front one, because raising a window to capture it 
 being captured — the log that is still scrolling, the dialog sitting over what it is about, the two
 windows being compared. A region under another window is not offered: it would photograph that
 window instead. A region the front window takes half of is offered on the half that is left, the
-same way one running off the edge of the screen always has been.
+same way one running off the edge of the screen always has been. A window that no capture can see
+is the exception and covers nothing — the window server marks it, and a shot of that rectangle
+returns what is behind it, which is a window worth hinting.
 
 Typing a hint holds the region rather than firing the shutter: everything outside it is masked and
 `Return` takes the shot. The mask fades in rather than appearing, so what the eye follows is the
@@ -45,6 +47,20 @@ you are looking at is by definition what is on screen. Its *words* still come ou
 window's tree, so `⌘⇧C` over the target window copies what the rectangle covers and over another
 app's window copies nothing. The arrows have nothing to step to from a region that is not in the
 tree, and beep; `Delete` goes back to the hints.
+
+`⌘⌥←` and `⌘⌥→` hold the left or right half of a display, which is the one rectangle worth drawing
+often enough to be worth a key — a window tiled to one side, a video beside the notes about it,
+either half of a comparison. The tree describes none of them: it has each window's box, and a half
+is a region of the screen rather than of anything on it. What is held is a rectangle exactly as a
+dragged one is, so the arrows beep at it and `Delete` goes back to the hints, and the two halves are
+complementary to the point — an odd width is split once and the second half takes what the first
+left. It is the display the pointer is on, since the crosshair is the one thing on screen through
+the whole session saying which that is, and it starts below the menu bar — no ordinary window is
+drawn in that strip, so it is the one part of a display that cannot hold any of what the half was
+reached for, and it is the same clock and the same icons in every shot that keeps it. The Dock
+stays: it floats over the window rather than beside it, so its band holds window pixels and taking
+it out would cut a strip out of the picture. An auto-hidden menu bar leaves nothing to take out, and
+the half runs to the top.
 
 While a session is up a crosshair follows the pointer with the coordinates under it drawn beside it
 — the same global top-left numbers `--dump` prints frames in and every capture line ends with, so an

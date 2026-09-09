@@ -245,7 +245,9 @@ explained where it is implemented.
   by being hidden around each shutter: it is drawn on a window's own edge, which is inside a region
   a capture clipped to that window can ask for, and the process taking the picture is not always the
   process holding the border. Measured, not assumed — a `sharingType = .none` window photographs as
-  the desktop behind it.
+  the desktop behind it. Which is also why the walk skips such a window rather than counting it as
+  cover: a full-screen border that occludes leaves every window on the machine culled, and every
+  capture taken during a burst — the burst's own included — ending `windows=0`.
 
 - **The app never takes focus.** Hint keys come from an event tap, and so do the clicks that aim
   the text box and the ones that draw a region — the overlay window ignores the mouse. A focused

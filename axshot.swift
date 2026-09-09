@@ -277,6 +277,28 @@
 // ancestors to widen along and no sibling to step to, and they beep. Delete goes back to the hints,
 // which is where the tree is.
 //
+// Command-Option-Left and Command-Option-Right hold half a display, which is the one rectangle
+// worth drawing often enough to be worth a key. A window tiled to one side, a video beside the
+// notes about it, either half of a comparison: the tree describes none of them -- what it has is
+// each window's own box, and the half is a region of the screen rather than of anything in it --
+// and a hand drawing it to the pixel is a hand drawing it twice. What comes out is a rectangle
+// exactly as a dragged one is, so the arrows beep at it and Delete goes back to the hints, and the
+// two halves are complementary to the point: an odd width is split once and the second half takes
+// what the first left, rather than both rounding and overlapping down the middle.
+//
+// The display under the pointer, and not the one the held region or the front window is on. Which
+// screen a key means has to be answered by something the eye can already see, and on a desktop
+// spanning two displays the crosshair is the only thing that is there through the whole session
+// saying so.
+//
+// It starts below the menu bar and runs to the bottom of the display. No ordinary window is drawn
+// in that strip, so it is the one part of a display that cannot hold any of what the half was
+// reached for -- and it is the same clock and the same icons in every shot that keeps it. The Dock
+// stays, which is not an inconsistency about furniture: it floats over the window rather than
+// beside it, so its band holds window pixels and taking it out would cut a strip out of the
+// picture. Both are read off the screen rather than assumed, so an auto-hidden menu bar leaves
+// nothing to take out and the half runs to the top.
+//
 // A crosshair follows the pointer for as long as a session is up, with the coordinates under it
 // drawn beside it -- the same global top-left numbers --dump prints frames in and every capture line
 // ends with, so an edge found by eye can be read off rather than measured. Both are painted into the
@@ -337,6 +359,14 @@
 // Everything on screen counts as drawn over: the menu bar, the Dock, a floating notification panel.
 // Only ordinary windows are hinted, so a menu, a popover or a Spotlight panel masks the window it
 // is over rather than being offered as a region of its own.
+//
+// Except a window no capture can see, which covers nothing and is not hinted either. The window
+// server says so outright -- a sharing state of none is a window left out of every picture taken of
+// the screen -- so a shot of that rectangle returns whatever is behind it, which is a window worth
+// hinting rather than one to cull. This app's own driving border is exactly such a window and is
+// the size of the screen: counted as cover it culled every window on the machine, and a capture
+// taken while an agent said it had the foreground ended "no window" -- including the capture the
+// agent was driving.
 //
 // The overlay never appears in the shot. It is a borderless window at screen-saver level that is
 // ordered out before the capture runs, with --delay-ms for the compositor. Focus is never taken
@@ -695,6 +725,14 @@ func onScreenWindows(options: Options, only: pid_t?) -> (targets: [WindowTarget]
     CGRectMakeWithDictionaryRepresentation(bounds as CFDictionary, &frame)
     let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
     if alpha <= 0 || frame.isEmpty { continue }
+    // A window no capture can see covers nothing. Sharing state 0 is the window server saying this
+    // one is left out of every picture taken of the screen, so what a shot of that rectangle
+    // returns is whatever is behind it -- which is a window worth hinting, not one to cull. This
+    // app's own driving border is exactly that and is the whole screen: counted as cover, an agent
+    // saying it has the foreground would leave every window on the machine culled and every capture
+    // ending "no window", including the one the burst was driving. Nor is such a window hinted
+    // itself: its own pixels are the ones nothing can photograph.
+    if (entry[kCGWindowSharingState as String] as? Int) == 0 { continue }
     let layer = (entry[kCGWindowLayer as String] as? Int) ?? 0
     // axshot's own windows are never hinted -- the settings window and the shortcut sheet are not
     // regions of anyone's work -- but they are drawn over what is behind them like anything else, so
@@ -1647,6 +1685,7 @@ enum HelpSheet {
       ("Any time", [
         ("drag", "select a custom region"),
         ("space", "hold while dragging to move the region"),
+        ("\u{2318}\u{2325}\u{2190} \u{2318}\u{2325}\u{2192}", "select the left/right half of the screen"),
         ("esc or " + (hotkey ?? ""), "cancel"),
         ("\u{2318},", "settings"),
         ("?", "keyboard shortcuts (you are here)"),
@@ -1896,6 +1935,17 @@ final class Session {
   /// clamped to it: the pointer stops at the edge of the desktop, but a region translated by the
   /// space key does not.
   var screenArea = CGRect.infinite
+  /// The screens one at a time, in the same space, each with the height of the menu bar strip along
+  /// its own top. Half a display is a rectangle on one of them, and the union cannot say which:
+  /// split down the middle it runs between two displays rather than across either. The strip is a
+  /// second fact because the frame is still what says which display the pointer is on -- including
+  /// while the pointer is up in the menu bar, which is exactly where a rect that had it taken out
+  /// already would answer no display at all.
+  var screens: [(frame: CGRect, menuBar: CGFloat)] = []
+  /// Where the pointer is, in the same space -- the point the crosshair is drawn at. Kept because
+  /// it is also the answer to which display a key means: it is the one thing on screen through the
+  /// whole session saying where the eye is.
+  var pointer = CGPoint.zero
   /// What turns a global top-left point or rect -- where a click lands, and where the tree reports
   /// frames -- into the overlay view's own coordinates: Quartz counts down from the top of the
   /// primary screen and the view counts up from the overlay's own corner.
@@ -1967,6 +2017,15 @@ final class Session {
         settings = true
         cancelled = true
         CFRunLoopStop(CFRunLoopGetCurrent())
+        return
+      }
+      // Half the display, which is a region the tree never describes and a drag never gets exactly
+      // right: a window tiled to one side, a video beside the notes about it, either half of a
+      // comparison. It holds whatever is already held out of the way, the way a drag does, and what
+      // it holds is a rectangle rather than an element -- so the arrows beep at it and Delete goes
+      // back to the hints, as they do for one drawn by hand.
+      if event.flags.contains(.maskAlternate), keyCode == 123 || keyCode == 124 {
+        half(left: keyCode == 123)
         return
       }
       guard let region = held, keyCode == 8 else { return }  // c
@@ -2181,6 +2240,7 @@ final class Session {
   /// Move the crosshair and the readout under it. Both are drawn into the overlay rather than being
   /// a cursor, since the cursor belongs to the active application and this app is never that.
   func updatePointer(_ point: CGPoint) {
+    pointer = point
     view.movePointer(to: viewPoint(point),
                      label: "\(Int(point.x.rounded())), \(Int(point.y.rounded()))")
   }
@@ -2264,6 +2324,41 @@ final class Session {
     view.selection = nil
     drawMask(nil)
     refresh()
+  }
+
+  /// Hold half a display, left or right. The pointer says which display: the crosshair is on screen
+  /// for the whole session saying where it is, and it is the only thing that is -- the held region
+  /// is one of the things this key replaces, and the frontmost window can be on a screen nobody is
+  /// looking at.
+  ///
+  /// It starts below the menu bar. No ordinary window is ever drawn up there, so the strip is the
+  /// one part of a display that cannot hold any of what the half was reached for, and it is the
+  /// same clock and the same icons in every shot that keeps it. The Dock stays, and the difference
+  /// is not which of the two is furniture: the Dock floats over the window rather than beside it,
+  /// so the band it sits in holds window pixels and taking it out would cut a strip out of the
+  /// picture. Where the menu bar is hidden there is nothing to take out, and the half runs to the
+  /// top of the display -- the strip is measured off the screen rather than assumed.
+  func half(left: Bool) {
+    // Neither list can be empty inside a session -- there is no overlay without a screen to draw it
+    // on, and no session without a window to hint -- but both are indexed below.
+    guard let screen = screens.first(where: { $0.frame.contains(pointer) }) ?? screens.first,
+          !windows.isEmpty else { NSSound.beep(); return }
+    // Split on a whole point, with the right half taking exactly what the left one left: on an odd
+    // width the two would otherwise overlap by a point, or leave one between them uncaptured.
+    let split = (screen.frame.width / 2).rounded()
+    let top = screen.frame.minY + screen.menuBar
+    let rect = CGRect(x: left ? screen.frame.minX : screen.frame.minX + split, y: top,
+                      width: left ? split : screen.frame.width - split,
+                      height: screen.frame.maxY - top)
+    // Front to back, so the words come from the window drawn on top of that half -- the same
+    // question a drag asks of a rectangle. A half with no window on it at all is a picture of the
+    // desktop, which is worth taking and has no text in it: the front window stands in, and its
+    // tree clipped to a rectangle it is nowhere near yields nothing, which is the honest answer.
+    let landed = windows.firstIndex { $0.frame.intersects(rect) } ?? 0
+    typed = ""
+    descent = []
+    hold(Candidate(element: windows[landed].element, role: "custom", subrole: "", label: "",
+                   rect: rect, depth: 0, childCount: 0, window: landed), at: nil)
   }
 
   /// Show the held region's text as one run of prose, or take it back down. A toggle rather than a
@@ -3194,6 +3289,9 @@ func runSession(_ options: Options) -> Outcome {
   session.cancelChord = options.cancelChord
   session.windows = targets.map { (element: $0.element, frame: $0.frame) }
   session.screenArea = screenArea
+  // The top inset rather than the visible frame whole: that also takes out the Dock, which is a
+  // band the window underneath is drawn through.
+  session.screens = screens.map { (flipY($0.frame), $0.frame.maxY - $0.visibleFrame.maxY) }
   session.flipBase = flipBase
   session.overlayOrigin = overlayFrame.origin
   Session.shared = session
