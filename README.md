@@ -81,6 +81,15 @@ half display take it too, and it stays put across a step and a return to the hin
 the shot should look rather than about which region it is of. The picture only: the words `⌘⇧C`
 copies and the picture `⇧T` reads are still the region's own.
 
+`⌘⇧3` photographs the display under the pointer with the overlay still on it — hints, mask,
+brackets, whatever is held — and `⌘⌃⇧3` puts that picture on the clipboard instead: the system's own
+screenshot chords, doing on the overlay what they do off it. Every other key here hides axshot
+before the shutter, so these two are the only picture of axshot there is, and nothing outside the
+session can take it — the overlay swallows the keyboard for as long as it is up, which makes the
+system's own chord underneath exactly the key that cannot reach it. The crosshair is left out, being
+a cursor and no more in this shot than in any other, and the menu bar strip goes the way `⌘⌥←` drops
+it.
+
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:
 

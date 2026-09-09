@@ -321,8 +321,24 @@
 // and redrawing every hint on a display -- and refilling a display's worth of transparent pixels --
 // for a label that moved four points is the one thing on the overlay that could be made to stutter.
 // Neither the crosshair nor the numbers reach a photograph: screencapture(1) is never asked for the
-// cursor, and the overlay is ordered out before the shutter and drawn bare across the one Shift-T
-// fires.
+// cursor, the overlay is ordered out before the shutter and drawn bare across the one Shift-T
+// fires, and the one Command-Shift-3 fires -- which is of the overlay and keeps everything else it
+// draws -- has them taken off it by hand first.
+//
+// Command-Shift-3 photographs the display with the overlay still on it, and
+// Command-Control-Shift-3 puts that picture on the clipboard -- the system's own two screenshot
+// chords, doing on the overlay what they do off it. Every other capture here hides axshot to take
+// it; this one is of axshot, which is what a README, or an argument about whether the hints are
+// legible against that page, actually needs -- and which nothing else can take: the overlay
+// swallows the keyboard while it is up, so the system's chord underneath is precisely the key that
+// cannot reach it. Whatever is on the overlay comes with it -- held region or not, box open or not,
+// mask and brackets and a half-typed hint included -- and the one thing that does not is the
+// crosshair, which is this app's cursor drawn by hand and is left out for the reason
+// screencapture(1) leaves the real one out. The display under the pointer, and below its menu bar,
+// on the two readings the half-display key already takes: the crosshair is the thing on screen
+// saying which display a key means, and no window is drawn in that top strip. It is the key at 3's
+// position rather than the character the layout types there, which is the reading macOS gives the
+// same chord: what is being quoted is a place the hand already knows, not a word.
 //
 // `+` and `-` put a margin around whatever is held, ten points to the press. A box out of the tree
 // is the element and nothing else, which is a tight crop rather than a framed one: a paragraph
@@ -396,11 +412,13 @@
 // taken while an agent said it had the foreground ended "no window" -- including the capture the
 // agent was driving.
 //
-// The overlay never appears in the shot. It is a borderless window at screen-saver level that is
-// ordered out before the capture runs, with --delay-ms for the compositor. Focus is never taken
-// from the target app -- the app would redraw its title bar and focus rings unfocused, and the
-// screenshot would be of a window that looks inactive, and NSWorkspace would stop calling the
-// target frontmost. The menu bar app is an accessory and never activates around a capture, and hint
+// The overlay never appears in the shot, bar the one shot that is of the overlay. It is a
+// borderless window at screen-saver level that is ordered out before the capture runs, with
+// --delay-ms for the compositor; Command-Shift-3 keeps it up and spends that same beat on taking
+// the crosshair off instead, the subject of the picture being everything else it draws.
+// Focus is never taken from the target app -- the app would redraw its title bar and focus rings
+// unfocused, and the screenshot would be of a window that looks inactive, and NSWorkspace would
+// stop calling the target frontmost. The menu bar app is an accessory and never activates around a capture, and hint
 // keys are read with a CGEventTap, which sees them without focus and swallows them so they never
 // reach the app. Key-downs only: the tap sits ahead of the hotkey manager, so a swallowed key-up
 // would leave the chord that started the session looking held, and every second press would fire
@@ -1271,6 +1289,11 @@ final class HintView: NSView {
   /// instead would photograph the same pixels, but the region would visibly unmask and re-mask
   /// around the shutter, which is a flash the join key never has.
   var bare = false
+  /// Set for the window shot, which is the one photograph the overlay stays whole for. `bare` is
+  /// too much there -- it takes off the brackets and the box, which are the subject -- and the
+  /// crosshair is the only thing that has to go: it stands in for a cursor, and screencapture(1) is
+  /// never asked for one of those either.
+  var hidesPointer = false
   /// Set while `?` is asking for the shortcut list, which is drawn over whatever is underneath it.
   var help = false
   /// The hotkey as settings spells it. It is one of the keys the list names -- a second tap cancels
@@ -1298,8 +1321,9 @@ final class HintView: NSView {
 
     drawRegions()
     // Never into a photograph, and not over the sheet: one is the shutter, and the other is a page
-    // being read rather than a screen being pointed at.
-    if !bare && !help { drawPointer() }
+    // being read rather than a screen being pointed at. `hidesPointer` is the second of those for
+    // the shot that keeps everything else -- the crosshair is a cursor, and no screenshot takes one.
+    if !bare && !help && !hidesPointer { drawPointer() }
     // Never over a shutter. Nothing can fire one while the sheet is up -- every other key is
     // swallowed -- but the sheet is the one thing on the overlay large enough that drawing it into
     // a photograph would go unnoticed until someone opened the file.
@@ -1716,6 +1740,8 @@ enum HelpSheet {
         ("\u{2318}\u{2325}\u{2190} \u{2318}\u{2325}\u{2192}", "select the left/right half of the screen"),
         ("esc or " + (hotkey ?? ""), "cancel"),
         ("\u{2318},", "settings"),
+        ("\u{2318}\u{21E7}3", "screenshot the overlay, hints and all"),
+        ("\u{2318}\u{2303}\u{21E7}3", "that same picture, on the clipboard"),
         ("?", "keyboard shortcuts (you are here)"),
       ]),
     ]
@@ -1851,9 +1877,15 @@ final class Session {
   var typed = ""
   /// The region a hint selected, held while the mask is up and the shutter waits for Return.
   var held: Candidate?
-  /// Set when the hold was ended with Command-C, which sends the shot to the clipboard rather than
-  /// to a file.
+  /// Set when the shot goes to the clipboard rather than to a file: Command-C on a held region, and
+  /// Command-Control-Shift-3 on the window shot, which takes Control to mean what the system's own
+  /// screenshot chord takes it to mean.
   var toClipboard = false
+  /// The rectangle Command-Shift-3 ended the session for: the display under the pointer, below its
+  /// menu bar, photographed with the overlay left standing so the hints are in the picture rather
+  /// than composited away before it. The one capture that is of axshot rather than of the apps
+  /// underneath it, and so the one whose rect is a screen rather than a region.
+  var windowShot: CGRect?
   /// Where the held region sits in the candidate list, which is what the arrow keys move through.
   var heldIndex: Int?
   /// The indices left behind by each Up, so Down can walk back into the region it came from. An
@@ -2058,6 +2090,28 @@ final class Session {
       if keyCode == 43 {  // comma
         settings = true
         cancelled = true
+        CFRunLoopStop(CFRunLoopGetCurrent())
+        return
+      }
+      // The system's own two screenshot chords, borrowed for the one shot the overlay is in:
+      // Shift-3 files it, Control-Shift-3 puts it on the clipboard, which is what each does off the
+      // overlay. Held region or not -- what the picture is of is the window and everything axshot
+      // has drawn on it. The key at 3's position rather than the character the layout types there,
+      // which is how macOS reads the chord this is quoting: a place the hand knows, not a word.
+      if keyCode == 20 {  // 3
+        let modifiers = carbonModifiers(event.flags)
+        // Exactly those modifiers and no others: a fourth one is a chord somebody meant elsewhere.
+        guard modifiers == UInt32(cmdKey | shiftKey) || modifiers == UInt32(cmdKey | controlKey | shiftKey)
+        else { return }
+        // The display under the pointer and the strip below its menu bar, both for the reasons the
+        // half-display key takes them: the crosshair is what says which screen a key means, and no
+        // window is drawn in that strip, so nothing the hints are on can be lost with it.
+        guard let screen = screens.first(where: { $0.frame.contains(pointer) }) ?? screens.first
+        else { NSSound.beep(); return }
+        let top = screen.frame.minY + screen.menuBar
+        windowShot = CGRect(x: screen.frame.minX, y: top,
+                            width: screen.frame.width, height: screen.frame.maxY - top)
+        toClipboard = modifiers & UInt32(controlKey) != 0
         CFRunLoopStop(CFRunLoopGetCurrent())
         return
       }
@@ -3412,7 +3466,7 @@ func runSession(_ options: Options) -> Outcome {
   // The tap swallows every key while it is up, so a session that somehow never ends would take the
   // keyboard with it. Run in slices and give up after this long rather than trusting it to stop.
   var sessionDeadline = Date().addingTimeInterval(15)
-  while session.chosen == nil && !session.cancelled && Date() < sessionDeadline {
+  while session.chosen == nil && !session.cancelled && session.windowShot == nil && Date() < sessionDeadline {
     CFRunLoopRunInMode(.defaultMode, 0.25, false)
     if let extended = session.deadline { sessionDeadline = extended; session.deadline = nil }
   }
@@ -3421,13 +3475,41 @@ func runSession(_ options: Options) -> Outcome {
   CGEvent.tapEnable(tap: tap, enable: false)
   CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
   CFMachPortInvalidate(tap)
+
+  // The one capture the overlay is in, and so the only one taken before it is ordered out. The
+  // crosshair comes off first and the compositor gets the same beat every other shutter gives it,
+  // which is the whole of what this picture is not of: a cursor is not in a screenshot.
+  var windowShot: (rect: CGRect, path: String?, taken: Bool)?
+  if let rect = session.windowShot {
+    view.hidesPointer = true
+    view.display()
+    CATransaction.flush()
+    Thread.sleep(forTimeInterval: Double(options.delayMs) / 1000)
+    let path = (session.toClipboard ? Destination.clipboard : options.destination).resolve()
+    windowShot = (rect, path, capture(rect, to: path))
+  }
   // A session that ends with nothing takes its mask off the way it put it on -- Escape, a second
   // tap of the hotkey, or a hold left to expire. A session that ends with something does not: the
-  // overlay vanishing on the keystroke is the acknowledgement, and on the two exits that photograph
+  // overlay vanishing on the keystroke is the acknowledgement, and on the exits that photograph
   // anything a fade in front of the shutter is either a delay or a mask half-lit in the picture.
-  if session.chosen == nil { session.fadeOutMask() }
+  // The window shot is one of those exits, and the one it would be half-lit inside of: it has
+  // already been taken, just above, with the mask at whatever strength the picture wanted it.
+  if session.chosen == nil && session.windowShot == nil { session.fadeOutMask() }
   session.stopFade()
   overlay.orderOut(nil)
+
+  if let windowShot {
+    let box = windowShot.rect
+    let rect = "rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height)))"
+    guard windowShot.taken else {
+      let hint = CGPreflightScreenCaptureAccess() ? "" : " screen_recording=false"
+      return Outcome(code: 12, line: "capture=failed shot=overlay\(hint) \(rect) total_ms=\(millis(since: start))")
+    }
+    // Read back for the toast, the way a region shot is, and for the same reason: a shot with a file
+    // behind it gets one, and the clipboard resolves to no path and so to no thumbnail.
+    let image = options.toast ? windowShot.path.flatMap({ NSImage(contentsOfFile: $0) }) : nil
+    return Outcome(code: 0, line: "shot=overlay \(rect) windows=\(targets.count) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(windowShot.path ?? "clipboard")", image: image, path: windowShot.path)
+  }
 
   // The copy key takes no picture, so there is nothing to wait for the compositor over.
   if session.copying, let chosen = session.chosen {

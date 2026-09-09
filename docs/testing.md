@@ -375,21 +375,37 @@ reports for a window that is there, so it is a pass only on a machine that is aw
 ## Seeing the overlay
 
 Axshot keeps its own marks out of its own screenshots — the shutter orders the overlay out, and the
-transcription key leaves it up and draws it bare — so no capture it takes ever contains them. To look
-at the overlay itself, trigger it and capture the screen from a *different* process — a shell with
-its own Screen Recording grant — then send Escape:
+transcription key leaves it up and draws it bare — with one exception, and the exception is the
+cheap way to look at the overlay. `⌘⇧3` on the overlay photographs the display under the pointer
+with everything axshot has drawn on it left standing, into the save folder; `⌘⌃⇧3` puts that picture
+on the clipboard. It is the app's own capture, so it runs on the app's Screen Recording grant rather
+than on the driving shell's, which generally has none:
+
+    ./scripts/wait-idle.sh
+    osascript -e 'tell application "System Events" to key code 21 using {option down, command down}'
+    sleep 3
+    osascript -e 'tell application "System Events" to key code 20 using {command down, shift down}'
+    ls -t "$(defaults read com.apple.screencapture location 2>/dev/null || echo ~/Desktop)"/Axshot*.png | head -1
+
+The chord ends the session, so there is no Escape to send after it, and the file lands under the
+usual timestamped name — list the save folder by time rather than reconstructing the second it was
+written. Three things it cannot show, each of them deliberately not what the shot is of: the
+crosshair, taken off before the shutter; the menu bar strip, dropped; and anything on another
+display or outside the session altogether, the corner thumbnail included. For those, capture the
+screen from a *different* process — a shell with its own Screen Recording grant — then send
+Escape:
 
     osascript -e 'tell application "System Events" to key code 21 using {option down, command down}'
     sleep 3
     screencapture -x -o -R 0,34,1470,922 /tmp/overlay.png
     osascript -e 'tell application "System Events" to key code 53'
 
-This is the only way to check hint placement and density, and it is worth doing after any change to
-the filter. It is also the only way to check anything the overlay *draws*, and the trap is that a
-capture looks like evidence: the overlay is ordered out before every shot, so the PNG is identical
-whether the drawing under test appeared or not, and a run that ends in a file proves the session
-reached the shutter and nothing more. The outcome line is the same kind of claim — it says which
-region the session ended on, not what was on top of it.
+One or the other is worth doing after any change to the filter, and after any change to what the
+overlay draws. The trap is that an *ordinary* capture looks like evidence and is not: the overlay is
+ordered out before every other shot, so the PNG is identical whether the drawing under test appeared
+or not, and a run that ends in a file proves the session reached the shutter and nothing more. The
+outcome line is the same kind of claim — it says which region the session ended on, not what was on
+top of it. `⌘⇧3` is the one shot that is not that claim, because the overlay is what it is of.
 
 Anything smaller than the overlay — the corner thumbnail, a badge, a bracket — does not survive a
 whole screen shrunk to fit. Capture the screen whole and crop afterwards rather than guessing a
