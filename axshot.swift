@@ -224,29 +224,68 @@
 // same way to words a different region never said.
 //
 // The arrows adjust the held region without going back to the hints, for when the one that was
-// lettered is nearly right: Left and Right step across the tree in document order -- to the next
-// sibling, cousin, uncle or nephew, skipping the held region's own ancestors and descendants, which
-// are the same region drawn bigger or smaller and are what the other two arrows are for -- while
-// Up widens to the smallest kept region containing this one, and Down returns to the region Up was
-// last looking at. Only kept candidates are offered, so Up is a visible widening rather than a walk
-// through the wrappers that repeat the same box. Down prefers to retrace an ascent rather than
-// guess at a child, since a container holds many and containment does not say which; stepping
-// sideways abandons that memory, because what it remembers is no longer inside what is held. HJKL do
-// the same four things as the arrows: the held region is a selection being adjusted rather than text
-// being typed, so the hand does not have to leave the letters it just typed a hint with. They are
-// read as physical keys, in the same layout-independent way as the hotkeys, and only while a region
-// is held -- before that every letter is a hint.
+// lettered is nearly right: each of the four holds the nearest region that way on screen -- the
+// nearest leaf, strictly, which is most of what follows. HJKL do the same four things, the held
+// region being a selection under adjustment rather than text being typed, so the hand does not have
+// to leave the letters it just typed a hint with. They are read as physical keys, in the same
+// layout-independent way as the hotkeys, and only while a region is held -- before that every letter
+// is a hint.
 //
-// All four stop at the window they were pressed in. What they walk is a tree and two windows are two
-// of them; across the boundary document order says only which window was in front, and a key that
-// steps to the next sibling would be stepping to something else on the screen entirely. Reaching
-// another window is what the hints are for.
+// The screen and not the tree, because the screen is what is being looked at. A hint that landed
+// near the mark landed near it on screen, and the region actually wanted is the one next to it
+// there; whether the tree calls that a sibling, a nephew or nothing at all is the app's own
+// bookkeeping, and it will happily put twenty steps between two boxes two centimetres apart -- a
+// sidebar and the button beside it. So the unmodified key answers the question that was asked by
+// looking, which is which way, and Option is left holding the one only the tree can answer.
 //
-// An arrow pressed with the hints still up holds the outermost region instead, which is where the
-// arrows can reach every other region from -- so the tree can be walked without ever picking a
-// letter, for when nothing lettered is close and reading the hints is more work than stepping. Only
-// the arrows do this, since HJKL are still hints until something is held. It is also the one place
-// Down has no ascent to retrace, so there it falls back to the held region's first child in document
+// Leaves and not every kept region, because a container that way is also a container over here: it
+// covers the place the step started from, and a step still holding where it came from did not go
+// anywhere. Which regions those are is asked of the boxes rather than of the tree, which costs a
+// pass over the list and is the only one of the two that answers: Chromium hands back a 28 point
+// toolbar button with the page's own toolbar nested somewhere underneath it, drawn 700 points away,
+// and what is inside a rectangle is a question rectangles answer. Asked within one window, though,
+// the way the nesting collapse is -- a box in the window behind that happens to contain a box in
+// front of it is not holding it, it is behind it.
+//
+// Direction is centre to centre, but a leaf lining up with the held region beats a nearer one that
+// does not, because lining up is what a row and a column are: Left out of an address bar is the
+// padlock beside it and not the toolbar button below, which by centres is half as far away. Where
+// nothing lines up there is no row to stay in, and the fall-back is a quarter turn either side of
+// the direction, so Left cannot answer with whatever is directly overhead; the cones tile the
+// screen between them, which is what leaves no leaf unreachable.
+//
+// They cross the window boundary, which the tree steps under Option stop at. What stops those is
+// that document order between two windows says only which was in front; a step across the screen
+// reads no document order, and coordinates mean the same thing either side of the edge. The window
+// beside this one is precisely the case of a region two centimetres away and nowhere in the tree.
+//
+// Option puts the same four keys back on the tree, which is two axes rather than four directions:
+// Left and Right step across it in document order -- to the next sibling, cousin, uncle or nephew,
+// skipping the held region's own ancestors and descendants, which are the same region drawn bigger
+// or smaller and are what the other two are for -- while Up widens to the smallest kept region
+// containing this one, and Down returns to the region Up was last looking at. Only kept candidates
+// are offered, so Up is a visible widening rather than a walk through the wrappers that repeat the
+// same box. Down prefers to retrace an ascent rather than guess at a child, since a container holds
+// many and containment does not say which; stepping sideways abandons that memory, because what it
+// remembers is no longer inside what is held.
+//
+// Modified, but not the lesser of the two. The screen walk lands on leaves and only leaves, so
+// Option-Up is the whole of how a container is reached from a held region at all -- the sidebar
+// rather than the row inside it, the message rather than the sentence -- and a screenshot is very
+// often of the container. What the unmodified keys change is which region; what Up and Down change
+// is how much of it.
+//
+// All four of them stop at the window they were pressed in. What they walk is a tree and two windows
+// are two of them; across the boundary document order says only which window was in front, and a key
+// that steps to the next sibling would be stepping to something else on the screen entirely. The
+// unmodified arrows are how another window is reached from a held region, and the hints are how it
+// is reached from nothing.
+//
+// An arrow pressed with the hints still up holds the outermost region instead, which is where every
+// other region can be reached from -- so the screen can be walked without ever picking a letter, for
+// when nothing lettered is close and reading the hints is more work than stepping. Only the arrows
+// do this, since HJKL are still hints until something is held. It is also the one place Option-Down
+// has no ascent to retrace, so there it falls back to the held region's first child in document
 // order; without that the entry point would only ever lead outwards.
 //
 // A region can also be drawn by hand, for what the tree does not describe: a slide, a video, a
@@ -1720,9 +1759,10 @@ enum HelpSheet {
         ("\u{21E7}J", "join text into one line"),
         ("\u{21E7}T", "transcribe the text in the image"),
         ("\u{21E7}E", "put the caret back in that text"),
-        ("\u{2190} \u{2192} or H L", "select the next/prev region"),
-        ("\u{2191} or K", "select the parent region"),
-        ("\u{2193} or J", "select the child region"),
+        ("\u{2190} \u{2192} \u{2191} \u{2193} or HJKL", "select the nearest region that way on screen"),
+        ("\u{2325}\u{2190} \u{2325}\u{2192}", "select the prev/next region in the tree"),
+        ("\u{2325}\u{2191}", "select the parent region"),
+        ("\u{2325}\u{2193}", "select the child region"),
         ("+ -", "grow or shrink the margin around it"),
       ]),
       ("Editing Text", [
@@ -2168,10 +2208,22 @@ final class Session {
       default: break
       }
       if keyCode == 51 { release() }  // delete, back to the hints
+      // The screen steps read the rectangle that is held and nothing else, so they are in front of
+      // the guard below: a dragged region and a half display are boxes on the screen like any other,
+      // and which way is a question a box answers without a place in the tree.
+      if !event.flags.contains(.maskAlternate), let region = held {
+        switch keyCode {
+        case 123, 4: leap(from: region.rect, dx: -1, dy: 0); return  // left, h
+        case 124, 37: leap(from: region.rect, dx: 1, dy: 0); return  // right, l
+        case 126, 40: leap(from: region.rect, dx: 0, dy: -1); return  // up, k
+        case 125, 38: leap(from: region.rect, dx: 0, dy: 1); return  // down, j
+        default: break
+        }
+      }
       guard let index = heldIndex else {
-        // A dragged region is not in the candidate list: there is no line of ancestors to widen
-        // along and no sibling to step to, so the four keys have nothing to offer it. Delete goes
-        // back to the hints, which is where the tree is.
+        // The tree steps are the ones a region outside the candidate list has nothing for: no line
+        // of ancestors to widen along and no sibling to step to. Delete goes back to the hints,
+        // which is where the tree is.
         if [123, 124, 125, 126, 4, 37, 40, 38].contains(keyCode) { NSSound.beep() }
         return
       }
@@ -2829,9 +2881,10 @@ final class Session {
   /// candidate's descendants are exactly the run that follows it while the depth stays greater, and
   /// its ancestors are the entries before it that keep setting a new shallowest depth.
   ///
-  /// It stops at the window it started in, as all four do. Document order across two windows says
-  /// only which was in front, and a key that walks a tree should not step out of the tree to a
-  /// region somewhere else on the screen -- the hints are how another window is reached.
+  /// It stops at the window it started in, as all three tree steps do. Document order across two
+  /// windows says only which was in front, and a key that walks a tree should not step out of the
+  /// tree to a region somewhere else on the screen -- the unmodified arrows are how another window
+  /// is reached from a held region, and the hints are how it is reached from nothing.
   func step(from index: Int, by offset: Int) {
     let window = candidates[index].window
     let depth = candidates[index].depth
@@ -2870,8 +2923,8 @@ final class Session {
   /// Back in to whatever Up was last looking at, or, with no ascent to retrace, into the held
   /// region's first child in document order. Containment alone would not say which child to pick --
   /// a container holds many -- so a remembered descent always wins; the first child is only what
-  /// makes the tree reachable inward at all when the arrows entered at the outermost region rather
-  /// than at a hint.
+  /// makes the tree reachable inward at all when an arrow entered at the outermost region rather
+  /// than a hint picked one.
   func descend() {
     if let child = descent.popLast() { hold(child); return }
     guard let index = heldIndex, candidates.indices.contains(index + 1),
@@ -2886,9 +2939,10 @@ final class Session {
   /// drawn what it will pull in before Return is pressed.
   ///
   /// Asked of whatever is held rather than of the candidate list, so a dragged rectangle and a half
-  /// display take it as a hinted region does -- unlike the arrows, which have a line of ancestors to
-  /// walk and nothing to walk it on. The mask is moved rather than faded in again: the darkness is
-  /// already on screen and being looked at, and this is the same region drawn slightly larger.
+  /// display take it as a hinted region does -- as they now take the unmodified arrows, and unlike
+  /// the tree steps under Option, which have a line of ancestors to walk and nothing to walk it on.
+  /// The mask is moved rather than faded in again: the darkness is already on screen and being
+  /// looked at, and this is the same region drawn slightly larger.
   ///
   /// It stops at nothing on the way down -- a margin is space around the region rather than a crop
   /// into it, so `-` puts back what `+` asked for and beeps at zero -- and at the edges of the
@@ -2906,6 +2960,79 @@ final class Session {
     showMask(rect)
     deadline = Date().addingTimeInterval(30)
     refresh()
+  }
+
+  /// Whether nothing kept sits inside this candidate: the smallest box drawn at that spot, which is
+  /// the only kind of region a step across the screen can land on and have gone anywhere. Asked of
+  /// the boxes and not of the tree, which costs this pass over the list and is the only one of the
+  /// two that answers -- Chromium hands back a 28 point toolbar button with the page's own toolbar
+  /// nested under it and drawn 700 points away, so being a parent there says nothing about what is
+  /// inside the rectangle. Within one window, the way the nesting collapse is: a box in the window
+  /// behind that happens to contain a box in front of it is not holding it, it is behind it. The 2pt
+  /// slack is `ascend`'s, against the same rounding.
+  func isLeaf(_ index: Int) -> Bool {
+    let candidate = candidates[index]
+    let outer = candidate.rect.insetBy(dx: -2, dy: -2)
+    return !candidates.contains {
+      $0.window == candidate.window && $0.area < candidate.area && outer.contains($0.rect)
+    }
+  }
+
+  /// The nearest leaf in one of four directions on screen, which is what the arrows do unmodified.
+  /// The screen is what is being looked at: a hint that landed near the mark landed near it there,
+  /// and the region actually wanted is the one next to it there. Whether the tree calls that a
+  /// sibling, a nephew or nothing at all is the app's own bookkeeping, and it will happily put
+  /// twenty steps between two boxes two centimetres apart. `step` and `ascend` are the same four
+  /// keys under Option, for the question only the tree answers.
+  ///
+  /// Which is also why this is the one of the two that leaves the window it started in. What stops
+  /// the tree steps at the boundary is that document order between two windows says only which was
+  /// in front; this reads no document order, screen coordinates mean the same thing either side of
+  /// the edge, and the window beside this one is exactly the case the key is for.
+  ///
+  /// Leaves, and not every kept region, because a container that way is also a container over here:
+  /// it covers the place the step started from, so it is a step that did not go anywhere. The
+  /// smallest thing at a spot is the thing at that spot, and Option-Up is how a region is made
+  /// bigger.
+  ///
+  /// Which way is centre to centre, and how near is too -- but a leaf that lines up with the held
+  /// region wins over one that is closer without lining up, because lining up is what a row and a
+  /// column are, and Left out of an address bar means the padlock beside it and not the toolbar
+  /// button below it, which by centres is half the distance away. Where nothing lines up there is no
+  /// row to stay in and the fall-back is a quarter turn either side of the direction, so that Left
+  /// cannot answer with whatever happens to be directly overhead. The cones tile the screen between
+  /// them, which is what leaves no leaf unreachable.
+  ///
+  /// Takes the rectangle rather than a place in the list, which is what lets a dragged region and a
+  /// half display be stepped off as a hinted one is: nothing here asks the tree anything. The held
+  /// region needs no excluding either, its own centre being no distance at all in any direction.
+  ///
+  /// The region's own box and not the framed one: a margin is room around the picture rather than a
+  /// bigger region, and the arrows have never read it either.
+  func leap(from origin: CGRect, dx: CGFloat, dy: CGFloat) {
+    var best: (index: Int, aligned: Bool, distance: CGFloat)?
+    for other in candidates.indices where isLeaf(other) {
+      let rect = candidates[other].rect
+      // Along the direction and across it. Frames are top-left origin, the space the tree reports
+      // in, so Down is +y and there is no flip to do here.
+      let offsetX = rect.midX - origin.midX
+      let offsetY = rect.midY - origin.midY
+      let along = offsetX * dx + offsetY * dy
+      let across = abs(offsetX * dy + offsetY * dx)
+      guard along > 0 else { continue }
+      let aligned = dx == 0
+        ? rect.minX < origin.maxX && origin.minX < rect.maxX
+        : rect.minY < origin.maxY && origin.minY < rect.maxY
+      guard aligned || across <= along else { continue }
+      let distance = hypot(along, across)
+      let better = best.map { aligned == $0.aligned ? distance < $0.distance : aligned } ?? true
+      if better { best = (other, aligned, distance) }
+    }
+    guard let best else { NSSound.beep(); return }
+    // Abandoned for the reason a sideways step abandons it: what Up was looking at is no longer
+    // inside what is held.
+    descent = []
+    hold(best.index)
   }
 
   /// Back from the mask to the hints, with nothing typed.

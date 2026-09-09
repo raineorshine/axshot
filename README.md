@@ -21,13 +21,15 @@ Typing a hint holds the region rather than firing the shutter: everything outsid
 `Return` takes the shot. The mask fades in rather than appearing, so what the eye follows is the
 darkness closing on the region it leaves clear and not the whole screen going dark at once, and it
 fades back out again wherever it leaves without a picture having been taken. The arrows adjust what
-is held — `←` and `→` step to the neighbouring
-region, `↑` widens to the one enclosing it, `↓` goes back in — so a hint that lands near the mark
-does not have to be retyped, and `HJKL` do the same four things so the hand can stay on the letters.
-An arrow pressed while the hints are still up holds the outermost region, so the tree can be walked
-without typing a letter at all — and they stay inside the window they started in, since two windows
-are two trees and the hints are how the other one is reached. `Delete` returns to the hints; `Escape` — or a second tap of the
-hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
+is held: each of the four holds the nearest *leaf* region that way on screen, across the window
+boundary and all, so a hint that lands near the mark does not have to be retyped and what is next to
+it on screen is reached by pointing at it. `HJKL` do the same four things so the hand can stay on the
+letters. An arrow pressed while the hints are still up holds the outermost region, so the screen can
+be walked without typing a letter at all. `⌥` with any of them walks the tree instead — `⌥←` `⌥→`
+step to the neighbouring region, `⌥↑` widens to the one enclosing it, `⌥↓` goes back in — which is
+how a container is reached at all, the unmodified keys landing only on leaves; those three stay
+inside the window they started in, since two windows are two trees. `Delete` returns to the hints;
+`Escape` — or a second tap of the hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
 bar it would otherwise take to get there. `?` puts the whole list of keys on screen — the
 overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
 down on `?` or `Escape`. The same list is on the menu bar as **Keyboard Shortcuts**, for reading it

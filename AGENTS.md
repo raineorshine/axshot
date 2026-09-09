@@ -209,14 +209,28 @@ explained where it is implemented.
   where it goes -- and, for a key the hold reads, whether it applies to a region that is not in the
   candidate list. A dragged rectangle and a half display are held exactly as a hinted region is and
   have no index, so where the key sits either side of that guard is the whole of the answer: the
-  arrows are past it because they walk the tree, and anything acting on the rectangle itself belongs
-  in front of it.
+  Option arrows are past it because they walk the tree, and anything acting on the rectangle itself
+  belongs in front of it — which is where the unmodified arrows moved to when they became a step
+  across the screen.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
-- **The arrows are two axes, not four directions.** Up and Down move along the held region's own
-  line of ancestors and descendants; Left and Right move across it and skip that line entirely. A
-  step that lands on a parent or a child is the same region drawn bigger or smaller, which is a
-  keystroke the other axis already spends.
+- **The bare arrows are the screen; Option is the tree.** Unmodified, each of the four holds the
+  nearest leaf that way on screen, preferring one that lines up over one that is merely close. The
+  screen is what is being looked at, and the tree's shape says nothing about what sits beside what —
+  it will put twenty steps between two boxes two centimetres apart. Leaves only, because a container
+  that way is also a container over here, and which regions those are is asked of the boxes and not
+  of the tree, for the same reason the copied text is: the tree nests things that are not drawn
+  inside each other. Within one window, though — a box in the window behind that contains a box in
+  front of it is behind it and not holding it — while the step itself crosses the boundary freely,
+  reading no document order to be stopped by.
+- **Option is two axes, not four directions, and is not the lesser of the two.** Up and Down move
+  along the held region's own line of ancestors and descendants; Left and Right move across it and
+  skip that line entirely. A step that lands on a parent or a child is the same region drawn bigger
+  or smaller, which is a keystroke the other axis already spends. It is what the unmodified keys
+  cannot do: they land on leaves and only leaves, so Option-Up is the whole of how a container is
+  reached from a held region — the sidebar rather than the row in it — and a screenshot is very
+  often of the container. All three stop at the window they started in, document order between two
+  trees saying only which was in front.
 - **Which display a key means is answered by the pointer.** Not the one the held region is on, not
   the one the front window is on: the crosshair follows the pointer for the whole session and is the
   only thing on a two-display desktop that says where the keyboard is aimed. Every key that names a
