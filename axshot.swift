@@ -281,6 +281,27 @@
 // unmodified arrows are how another window is reached from a held region, and the hints are how it
 // is reached from nothing.
 //
+// Shift on any of them reaches instead of moving: the region that key would have held is added to
+// what is held rather than replacing it, and the shot becomes the box around all of them. A capture
+// is one rectangle, so several regions is the rectangle they sit in -- that box is what the mask is
+// drawn around, being what will be photographed, and the brackets move onto each region to say
+// which parts of it came out of the tree and which is the gap between two of them. The words follow:
+// both copy chords hand over every held region's text in document order, whichever end the selection
+// grew from, and Shift-J joins the lot. What is reached is whichever step the modifier already
+// chose -- across the screen bare, across the tree under Option -- so a column of rows and a run of
+// siblings are each one key held down.
+//
+// The opposite arrow gives back the region last reached rather than reaching around the other side
+// of where the chain started, which is what Shift and an arrow do in a list anywhere else; a bare
+// arrow lets go of everything but the end it is moving from; and Option-Up widens past the whole
+// selection at once, to the smallest region containing the box rather than any one of the regions
+// in it. Option-Shift on Up or Down is Option's alone, since what it would add is a region on the
+// held one's own line of ancestors, and the box around a region and one containing it is the
+// containing one. A rectangle drawn by hand can be reached from and not into: the screen steps read
+// its coordinates as they read any other box, and the tree steps have nowhere to start. It is the
+// arrows and not HJKL, for a reason no wider than the keyboard -- Shift-J is already the join, and
+// a quartet with one letter meaning something else is not a quartet.
+//
 // An arrow pressed with the hints still up holds the largest region instead -- so the screen can be
 // walked without ever picking a letter, for when nothing lettered is close and reading the hints is
 // more work than stepping. Every region is reachable from every other one, the screen steps crossing
@@ -1326,8 +1347,13 @@ final class HintView: NSView {
   var typed = ""
   /// Set once a hint has been typed: the region is held, everything outside it is masked, and the
   /// shutter waits for Return. Preview's crop, without the grid -- the point is to see what the
-  /// shot will contain while the target is still on screen to compare it against.
+  /// shot will contain while the target is still on screen to compare it against. With several
+  /// regions held it is the box around them, that being the one rectangle a capture can be.
   var selection: CGRect?
+  /// Each region held, where there is more than one, which is then what the brackets mark. The mask
+  /// is drawn around what will be photographed and these are the parts of it that came out of the
+  /// tree; with one region the two say the same thing and this is left empty.
+  var members: [CGRect] = []
   /// The mask itself: the box it leaves clear, and how far the darkness has come in -- 0 is a
   /// screen with nothing over it, 1 is the mask at full strength. A second fact rather than a level
   /// hung off `selection`, because the two have different lives: Delete lets the region go and puts
@@ -1517,16 +1543,17 @@ final class HintView: NSView {
       // Nothing from here down is drawn for the shutter: the brackets and the box below them sit
       // inside the region, which is the one part of the screen the photograph is of.
       if !bare {
-        let region = mask.rect
-        let arm = min(24, region.width / 3, region.height / 3)
         let thickness: CGFloat = 2
         let corners = NSBezierPath()
-        for (x, dx) in [(region.minX, 1.0 as CGFloat), (region.maxX, -1.0 as CGFloat)] {
-          for (y, dy) in [(region.minY, 1.0 as CGFloat), (region.maxY, -1.0 as CGFloat)] {
-            corners.move(to: CGPoint(x: x + dx * arm, y: y + dy * thickness / 2))
-            corners.line(to: CGPoint(x: x, y: y + dy * thickness / 2))
-            corners.move(to: CGPoint(x: x + dx * thickness / 2, y: y))
-            corners.line(to: CGPoint(x: x + dx * thickness / 2, y: y + dy * arm))
+        for region in (members.isEmpty ? [mask.rect] : members) {
+          let arm = min(24, region.width / 3, region.height / 3)
+          for (x, dx) in [(region.minX, 1.0 as CGFloat), (region.maxX, -1.0 as CGFloat)] {
+            for (y, dy) in [(region.minY, 1.0 as CGFloat), (region.maxY, -1.0 as CGFloat)] {
+              corners.move(to: CGPoint(x: x + dx * arm, y: y + dy * thickness / 2))
+              corners.line(to: CGPoint(x: x, y: y + dy * thickness / 2))
+              corners.move(to: CGPoint(x: x + dx * thickness / 2, y: y))
+              corners.line(to: CGPoint(x: x + dx * thickness / 2, y: y + dy * arm))
+            }
           }
         }
         NSColor(calibratedWhite: 1, alpha: mask.level).setStroke()
@@ -1798,7 +1825,9 @@ enum HelpSheet {
         ("\u{21E7}T", "transcribe the text in the image"),
         ("\u{21E7}E", "put the caret back in that text"),
         ("\u{2190} \u{2192} \u{2191} \u{2193} or HJKL", "select the nearest region that way on screen"),
+        ("\u{21E7}\u{2190} \u{21E7}\u{2192} \u{21E7}\u{2191} \u{21E7}\u{2193}", "add that region to the selection"),
         ("\u{2325}\u{2190} \u{2325}\u{2192}", "select the prev/next region in the tree"),
+        ("\u{2325}\u{21E7}\u{2190} \u{2325}\u{21E7}\u{2192}", "add that one to the selection"),
         ("\u{2325}\u{2191}", "select the parent region"),
         ("\u{2325}\u{2193}", "select the child region"),
         ("+ -", "grow or shrink the margin around it"),
@@ -1953,8 +1982,52 @@ final class Session {
   var labels: [String] = []
   var candidates: [Candidate] = []
   var typed = ""
-  /// The region a hint selected, held while the mask is up and the shutter waits for Return.
-  var held: Candidate?
+  /// A region held, with its place in the candidate list where it has one. A rectangle drawn by
+  /// hand and a half display have none: they are boxes on the screen and nowhere in the tree.
+  struct Held {
+    let region: Candidate
+    let index: Int?
+  }
+  /// One of the six ways Shift and an arrow reach: four across the screen, two across the tree.
+  struct Reach: Equatable {
+    let dx: Int
+    let dy: Int
+    /// Whether Option was down with it, which is the tree rather than the screen.
+    let tree: Bool
+    var opposite: Reach { Reach(dx: -dx, dy: -dy, tree: tree) }
+
+    init(dx: Int, dy: Int, tree: Bool) {
+      self.dx = dx
+      self.dy = dy
+      self.tree = tree
+    }
+
+    /// Nil for anything that is not one of the six. Up and Down across the tree are the ancestors,
+    /// and the box around a region and one containing it is the containing one -- there is nothing
+    /// there for a reach to be that Option-Up is not already, so those two are left to it.
+    init?(keyCode: Int64, tree: Bool) {
+      switch (keyCode, tree) {
+      case (123, _): dx = -1; dy = 0
+      case (124, _): dx = 1; dy = 0
+      case (126, false): dx = 0; dy = -1
+      case (125, false): dx = 0; dy = 1
+      default: return nil
+      }
+      self.tree = tree
+    }
+  }
+  /// The regions held together while the mask is up and the shutter waits for Return, in the order
+  /// they were reached: the first is where the hint landed or the drag ended, the last is the end
+  /// the arrows move from. One entry is the ordinary hold, which is what a hint, a drag and every
+  /// unmodified arrow leave behind.
+  var chain: [Held] = []
+  /// What last reached, so the opposite key gives that region back rather than reaching around the
+  /// other side of where the chain started. Dropped whenever one region is held, which is the state
+  /// either direction reaches outwards from.
+  var reached: Reach?
+
+  /// The region the arrows move from, and the one every key that reads a single region reads.
+  var held: Candidate? { chain.last?.region }
   /// Set when the shot goes to the clipboard rather than to a file: Command-C on a held region, and
   /// Command-Control-Shift-3 on the window shot, which takes Control to mean what the system's own
   /// screenshot chord takes it to mean.
@@ -1964,12 +2037,27 @@ final class Session {
   /// than composited away before it. The one capture that is of axshot rather than of the apps
   /// underneath it, and so the one whose rect is a screen rather than a region.
   var windowShot: CGRect?
-  /// Where the held region sits in the candidate list, which is what the arrow keys move through.
-  var heldIndex: Int?
-  /// The indices left behind by each Up, so Down can walk back into the region it came from. An
-  /// ascent is the only thing that records a child; stepping sideways abandons the descent, because
-  /// the remembered child is no longer inside what is held.
-  var descent: [Int] = []
+  /// Where that region sits in the candidate list, which is what the tree steps move through. Nil
+  /// for a rectangle drawn by hand, which is nowhere in it.
+  var heldIndex: Int? { chain.last?.index }
+  /// Everything held, in document order rather than in the order it was reached: the words go on
+  /// the clipboard in the order the tree had them, whichever end the selection grew from. A drawn
+  /// rectangle is nowhere in that order, and is always where the chain started, so it leads.
+  var heldRegions: [Candidate] {
+    chain.sorted { ($0.index ?? Int.min) < ($1.index ?? Int.min) }.map(\.region)
+  }
+  /// What the shutter photographs, before the margin: the box around every region held, and so
+  /// whatever the layout put between them. A capture is one rectangle, so several regions is the
+  /// rectangle they sit in -- and that is what the mask is drawn around, or the overlay would be
+  /// showing something other than the shot it is about to take.
+  var heldRect: CGRect? {
+    guard let first = chain.first?.region.rect else { return nil }
+    return chain.dropFirst().reduce(first) { $0.union($1.region.rect) }
+  }
+  /// The chains left behind by each Up, so Down can walk back into what it came from. An ascent is
+  /// the only thing that records a descent; stepping sideways abandons it, because what was
+  /// remembered is no longer inside what is held.
+  var descent: [[Held]] = []
   /// How far the shot reaches outside the held region, in points, as `+` and `-` have left it. The
   /// box came off the tree and is the element and nothing else, which is a tight crop rather than a
   /// framed one; the margin is the room back. It is a statement about how the shot should look
@@ -2246,6 +2334,15 @@ final class Session {
       default: break
       }
       if keyCode == 51 { release() }  // delete, back to the hints
+      // Shift and an arrow reaches rather than moves: the region the same key would have held is
+      // added to what is held instead of replacing it. Both axes, since Shift says what to do with
+      // a step and Option says which step -- and the arrows only, not HJKL, because Shift-J is
+      // already the join and a quartet with one letter meaning something else is not a quartet.
+      if event.flags.contains(.maskShift),
+         let reach = Reach(keyCode: keyCode, tree: event.flags.contains(.maskAlternate)) {
+        extend(reach)
+        return
+      }
       // The screen steps read the rectangle that is held and nothing else, so they are in front of
       // the guard below: a dragged region and a half display are boxes on the screen like any other,
       // and which way is a question a box answers without a place in the tree.
@@ -2393,15 +2490,26 @@ final class Session {
   func hold(_ index: Int) { hold(candidates[index], at: index) }
 
   /// The same for a region that came off the mouse rather than out of the tree, which is why the
-  /// index is optional: a dragged rectangle has no place in the candidate list for the arrows to
-  /// step from. Its rect is put into view coordinates by the arithmetic that built `view.boxes`
-  /// rather than read back out of them, that being the only one a custom region has.
-  func hold(_ candidate: Candidate, at index: Int?) {
+  /// index is optional: a dragged rectangle has no place in the candidate list for the tree steps
+  /// to walk from.
+  func hold(_ candidate: Candidate, at index: Int?) { hold([Held(region: candidate, index: index)]) }
+
+  /// Hold these and let go of whatever was held before: mask around the box they all sit in, mark
+  /// each of them where there is more than one, and restart the deadline. Their rects are put into
+  /// view coordinates by the arithmetic that built `view.boxes` rather than read back out of them,
+  /// that being the only one a custom region has.
+  func hold(_ regions: [Held]) {
+    guard !regions.isEmpty else { return }
     holds += 1
-    held = candidate
-    heldIndex = index
-    let rect = viewRect(framed(candidate.rect))
+    chain = regions
+    // One region is either direction's to reach from, so nothing is owed back.
+    if regions.count == 1 { reached = nil }
+    let rect = viewRect(framed(heldRect ?? regions[0].region.rect))
     view.selection = rect
+    // Marked only where they say something the mask does not. With one region the mask is drawn
+    // around exactly what the brackets would mark, margin and all; with several it is drawn around
+    // the box they sit in, and which parts of that came out of the tree is a second thing to say.
+    view.members = regions.count > 1 ? regions.map { viewRect($0.region.rect) } : []
     showMask(rect)
     view.notice = nil
     caret = nil
@@ -2416,7 +2524,7 @@ final class Session {
       edited = false
       joined = nil
     } else if joined != nil {
-      joined = regionText(candidate, budgetMs: budgetMs, separator: " ")
+      joined = heldText(separator: " ")
     }
     deadline = Date().addingTimeInterval(30)
     refresh()
@@ -2579,12 +2687,21 @@ final class Session {
   /// Show the held region's text as one run of prose, or take it back down. A toggle rather than a
   /// mode with its own exit: what it draws covers the region it describes, so the way back to the
   /// picture is the key that covered it.
+  /// The words every held region says, in document order. Several regions come back as one run
+  /// with the same separator between them as between one region's own lines: what made them several
+  /// was the tree's idea of where a thing ends, which is the same idea that broke the lines.
+  func heldText(separator: String = "\n") -> String {
+    heldRegions.map { regionText($0, budgetMs: budgetMs, separator: separator) }
+      .filter { !$0.isEmpty }
+      .joined(separator: separator)
+  }
+
   func join() {
-    guard let region = held else { return }
+    guard !chain.isEmpty else { return }
     if joined != nil {
       joined = nil
     } else {
-      let text = regionText(region, budgetMs: budgetMs, separator: " ")
+      let text = heldText(separator: " ")
       guard !text.isEmpty else { NSSound.beep(); return }
       joined = text
       openBox()
@@ -2836,7 +2953,7 @@ final class Session {
   /// covered the region, but the corner brackets are drawn inside it and the text box over it, and
   /// either would be transcribed as though the app had written them there.
   func transcribe() {
-    guard let region = held else { return }
+    guard let box = heldRect else { return }
     // What the answer is about, so a region held after it was asked for -- stepped to, or drawn --
     // can tell that the answer is no longer its own.
     let token = holds
@@ -2880,7 +2997,7 @@ final class Session {
     let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("axshot-transcribe.png")
     // The region's own box rather than the framed one, whatever the margin is: padding is room
     // around the picture, and the words standing in it belong to whatever the region sits next to.
-    let captured = capture(region.rect, to: path)
+    let captured = capture(box, to: path)
     view.bare = false
     let png = captured ? FileManager.default.contents(atPath: path) : nil
     try? FileManager.default.removeItem(atPath: path)
@@ -2929,7 +3046,7 @@ final class Session {
   /// windows says only which was in front, and a key that walks a tree should not step out of the
   /// tree to a region somewhere else on the screen -- the unmodified arrows are how another window
   /// is reached from a held region, and the hints are how it is reached from nothing.
-  func step(from index: Int, by offset: Int) {
+  func neighbour(of index: Int, by offset: Int) -> Int? {
     let window = candidates[index].window
     let depth = candidates[index].depth
     var shallowest = depth
@@ -2945,22 +3062,60 @@ final class Session {
       }
       break
     }
-    guard candidates.indices.contains(next), candidates[next].window == window else { NSSound.beep(); return }
+    guard candidates.indices.contains(next), candidates[next].window == window else { return nil }
+    return next
+  }
+
+  /// Step onto that region, letting go of anything else held.
+  func step(from index: Int, by offset: Int) {
+    guard let next = neighbour(of: index, by: offset) else { NSSound.beep(); return }
     descent = []
     hold(next)
+  }
+
+  /// Reach rather than step: the region the same arrow would have held is added to what is held,
+  /// and the shot grows to the box around all of it. The opposite arrow gives back the one last
+  /// reached rather than reaching around the other side of where the chain started, which is what
+  /// Shift and an arrow do in a list anywhere else on the machine.
+  ///
+  /// A rectangle drawn by hand can be reached from across the screen and not across the tree, for
+  /// the reason the bare arrows step off it and the Option ones beep at it: coordinates it has, a
+  /// place among the siblings it does not.
+  func extend(_ reach: Reach) {
+    guard let end = chain.last else { return }
+    if chain.count > 1, reached == reach.opposite { hold(Array(chain.dropLast())); return }
+    let next: Int?
+    if reach.tree {
+      guard let index = end.index else { NSSound.beep(); return }
+      next = neighbour(of: index, by: reach.dx)
+    } else {
+      next = nearest(from: end.region.rect, dx: CGFloat(reach.dx), dy: CGFloat(reach.dy))
+    }
+    // Nothing is added twice: the same region reached from two directions is one region, and a
+    // second copy of it would be a second copy of its words on the clipboard.
+    guard let next, !chain.contains(where: { $0.index == next }) else { NSSound.beep(); return }
+    descent = []
+    hold(chain + [Held(region: candidates[next], index: next)])
+    reached = reach
   }
 
   /// Out to the smallest kept region that contains this one. The filter has already thrown away the
   /// wrappers that merely repeat their child's box, so the enclosing candidate is a visibly bigger
   /// region rather than the same one again -- which is what makes this a widening rather than a
   /// walk up a chain of identical rectangles.
+  /// With several regions held it widens past all of them at once, because what it has to contain
+  /// is the box the shutter would have taken and not any one of the regions inside it. A selection
+  /// reaching into a second window has no such box in the list and beeps, the candidates each being
+  /// clipped to a window of their own.
   func ascend(from index: Int) {
-    let inner = candidates[index].rect
+    let inner = heldRect ?? candidates[index].rect
+    let inside = Set(chain.compactMap(\.index))
+    let area = inner.width * inner.height
     let parent = candidates.indices
-      .filter { $0 != index && candidates[$0].window == candidates[index].window && candidates[$0].rect.insetBy(dx: -2, dy: -2).contains(inner) && candidates[$0].area > candidates[index].area }
+      .filter { !inside.contains($0) && candidates[$0].window == candidates[index].window && candidates[$0].rect.insetBy(dx: -2, dy: -2).contains(inner) && candidates[$0].area > area }
       .min { candidates[$0].area < candidates[$1].area }
     guard let parent else { NSSound.beep(); return }
-    descent.append(index)
+    descent.append(chain)
     hold(parent)
   }
 
@@ -2970,7 +3125,7 @@ final class Session {
   /// makes the tree reachable inward at all when an arrow entered at the largest region rather than
   /// a hint picked one.
   func descend() {
-    if let child = descent.popLast() { hold(child); return }
+    if let previous = descent.popLast() { hold(previous); return }
     guard let index = heldIndex, candidates.indices.contains(index + 1),
           candidates[index + 1].window == candidates[index].window,
           candidates[index + 1].depth > candidates[index].depth else { NSSound.beep(); return }
@@ -2998,7 +3153,7 @@ final class Session {
     guard let region = held else { return }
     let before = margin
     margin = max(0, margin + points)
-    let rect = viewRect(framed(region.rect))
+    let rect = viewRect(framed(heldRect ?? region.rect))
     guard margin != before, rect != view.selection else { margin = before; NSSound.beep(); return }
     view.selection = rect
     showMask(rect)
@@ -3053,7 +3208,7 @@ final class Session {
   ///
   /// The region's own box and not the framed one: a margin is room around the picture rather than a
   /// bigger region, and the arrows have never read it either.
-  func leap(from origin: CGRect, dx: CGFloat, dy: CGFloat) {
+  func nearest(from origin: CGRect, dx: CGFloat, dy: CGFloat) -> Int? {
     var best: (index: Int, aligned: Bool, distance: CGFloat)?
     for other in candidates.indices where isLeaf(other) {
       let rect = candidates[other].rect
@@ -3072,18 +3227,23 @@ final class Session {
       let better = best.map { aligned == $0.aligned ? distance < $0.distance : aligned } ?? true
       if better { best = (other, aligned, distance) }
     }
-    guard let best else { NSSound.beep(); return }
+    return best?.index
+  }
+
+  /// Hold it, letting go of anything else held.
+  func leap(from origin: CGRect, dx: CGFloat, dy: CGFloat) {
+    guard let best = nearest(from: origin, dx: dx, dy: dy) else { NSSound.beep(); return }
     // Abandoned for the reason a sideways step abandons it: what Up was looking at is no longer
     // inside what is held.
     descent = []
-    hold(best.index)
+    hold(best)
   }
 
   /// Back from the mask to the hints, with nothing typed.
   func release() {
     holds += 1
-    held = nil
-    heldIndex = nil
+    chain = []
+    reached = nil
     descent = []
     typed = ""
     joined = nil
@@ -3094,6 +3254,7 @@ final class Session {
     anchor = 0
     beforeEdit = nil
     view.selection = nil
+    view.members = []
     view.notice = nil
     hideMask()
     refresh()
@@ -3660,6 +3821,10 @@ func runSession(_ options: Options) -> Outcome {
     let path = (session.toClipboard ? Destination.clipboard : options.destination).resolve()
     windowShot = (rect, path, capture(rect, to: path))
   }
+  // How many regions went into the one rectangle, on the lines where it was more than the one the
+  // hint landed on.
+  let regions = session.chain.count > 1 ? " regions=\(session.chain.count)" : ""
+
   // A session that ends with nothing takes its mask off the way it put it on -- Escape, a second
   // tap of the hotkey, or a hold left to expire. A session that ends with something does not: the
   // overlay vanishing on the keystroke is the acknowledgement, and on the exits that photograph
@@ -3687,14 +3852,14 @@ func runSession(_ options: Options) -> Outcome {
   if session.copying, let chosen = session.chosen {
     // Whatever is on screen is what is copied: the transcription if Shift-T put it there, the joined
     // run if Shift-J did, and otherwise the text laid out the way the region laid it out.
-    let text = session.copyText ?? regionText(chosen, budgetMs: options.budgetMs)
-    let box = chosen.rect
+    let text = session.copyText ?? session.heldText()
+    let box = session.heldRect ?? chosen.rect
     guard !text.isEmpty else {
       return Outcome(code: 13, line: "app=\(name(targets[chosen.window])) role=\(chosen.role) copy=text chars=0 rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) total_ms=\(millis(since: start))")
     }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-    return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role) copy=\(session.selecting ? "selection" : session.edited ? "edited" : session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined") chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
+    return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role) copy=\(session.selecting ? "selection" : session.edited ? "edited" : session.transcribed ? "transcribed" : session.joined == nil ? "text" : "joined")\(regions) chars=\(text.count) lines=\(text.split(separator: "\n").count) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) candidates=\(candidates.count) walk_ms=\(walkMs) total_ms=\(millis(since: start))")
   }
 
   // Give the window server a beat to composite the overlay away before the shutter.
@@ -3704,7 +3869,7 @@ func runSession(_ options: Options) -> Outcome {
     return Outcome(code: 11, line: "windows=\(targets.count) cancelled=true\(session.settings ? " settings=true" : "") walk_ms=\(walkMs) total_ms=\(millis(since: start))", settings: session.settings)
   }
   // What `+` and `-` left, clamped to the screens: past those there is nothing to photograph.
-  let box = session.framed(chosen.rect)
+  let box = session.framed(session.heldRect ?? chosen.rect)
   let destination: Destination = session.toClipboard ? .clipboard : options.destination
   let path = destination.resolve()
   guard capture(box, to: path) else {
@@ -3716,7 +3881,7 @@ func runSession(_ options: Options) -> Outcome {
   let image = options.toast ? path.flatMap({ NSImage(contentsOfFile: $0) }) : nil
 
   let label = chosen.label.isEmpty ? "" : " label=\"\(chosen.label.prefix(60))\""
-  return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role)\(label) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) windows=\(targets.count) candidates=\(candidates.count) visited=\(visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")", image: image, path: path)
+  return Outcome(code: 0, line: "app=\(name(targets[chosen.window])) role=\(chosen.role)\(label)\(regions) rect=(\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height))) windows=\(targets.count) candidates=\(candidates.count) visited=\(visited) walk_ms=\(walkMs) total_ms=\(millis(since: start)) out=\(path ?? "clipboard")", image: image, path: path)
 }
 
 // MARK: - Hotkey

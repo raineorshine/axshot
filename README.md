@@ -24,11 +24,14 @@ fades back out again wherever it leaves without a picture having been taken. The
 is held: each of the four holds the nearest *leaf* region that way on screen, across the window
 boundary and all, so a hint that lands near the mark does not have to be retyped and what is next to
 it on screen is reached by pointing at it. `HJKL` do the same four things so the hand can stay on the
-letters. An arrow pressed while the hints are still up holds the largest region, so the screen can
-be walked without typing a letter at all. `⌥` with any of them walks the tree instead — `⌥←` `⌥→`
+letters. `⇧` with any arrow reaches rather than moves — that region is added to what is held, and
+the shot grows to the box around the lot, a capture being one rectangle — with the opposite arrow
+giving the last one back. An arrow pressed while the hints are still up holds the largest region, so
+the screen can be walked without typing a letter at all. `⌥` with any of them walks the tree instead — `⌥←` `⌥→`
 step to the neighbouring region, `⌥↑` widens to the one enclosing it, `⌥↓` goes back in — which is
 how a container is reached at all, the unmodified keys landing only on leaves; those three stay
-inside the window they started in, since two windows are two trees. `Delete` returns to the hints;
+inside the window they started in, since two windows are two trees. `⌥⇧←` and `⌥⇧→` reach along
+that axis the way `⇧` and a bare arrow reach across the screen. `Delete` returns to the hints;
 `Escape` — or a second tap of the hotkey — cancels. `⌘,` cancels and opens settings, held region or not — the overlay covers the menu
 bar it would otherwise take to get there. `?` puts the whole list of keys on screen — the
 overlay is the only interface there is, so the legend is drawn over the middle of it and comes back
@@ -103,7 +106,7 @@ back at the hotkey, and two keys that put the region's words on screen first:
 | `⇧J` | show that text joined into one run of prose, which either copy chord then copies |
 | `⇧T` | transcribe the region's *picture* instead, for when the tree has no text |
 | `⇧E` | put the caret back in that text after `Escape` |
-| `⇧←` `⇧→` `⌘A` | select part of it, which is then all either copy chord takes |
+| `⇧←` `⇧→` `⌘A` | select part of that text, which is then all either copy chord takes |
 | click, drag | place the caret or select with the mouse |
 
 `⇧J` — the letter as your layout types it, not the key `J` sits on — joins the region's text into
