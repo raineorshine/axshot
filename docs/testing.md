@@ -11,6 +11,20 @@ installed app; this is the mechanics it calls for.
 - `axshot --dump` walks and filters and prints, without drawing anything and without touching the
   installed app. This is how the region filter is tuned, it needs no lock, and it is the only path
   that does not touch Screen Recording.
+- **A filter change is a diff of the region lists, not of the count.** Dropping one candidate and
+  revealing the one it was hiding leaves the count where it was, so `boxes=` and `candidates=` say
+  nothing about a change that rewrote what is offered. Dump the branch beside a build of
+  `origin/main` and diff the listings with the labels stripped — a label renumbers everything after
+  the first line that changed. The comparison build is never installed and needs no lock:
+
+      git show origin/main:axshot.swift > /tmp/before/axshot.swift
+      swiftc -O -swift-version 5 -o /tmp/before/axshot /tmp/before/axshot.swift
+      cp -R Axshot.app /tmp/Before.app && cp /tmp/before/axshot /tmp/Before.app/Contents/MacOS/axshot
+      codesign -f -s "Axshot Local Signing" /tmp/Before.app
+
+  The bundle around it is not optional. A loose binary signed with the same identity answers
+  `trusted=false` however it was built — the grant's requirement names the bundle identifier and a
+  bare Mach-O carries none — so the comparison binary goes inside a copy of `Axshot.app`.
 - The outcome line is the assertion for anything that changes *which* region a session ends on.
   `rect=` is printed on the capture line, so a driven run can be checked against the region list
   from a `--dump` of the same window without looking at a pixel; photograph the overlay only for
@@ -166,7 +180,11 @@ than to plausibility: reimplement the rule over a `--dump` taken inside the same
 expected `rect=` is a value rather than a judgement. Equality is then the assertion, and it catches
 a rule ported wrong in one direction while the other three look right — which no eye on a
 screenshot would. It costs a second implementation of the rule, so it earns its keep on the rules
-worth two, and the dump has to come from the burst rather than from before it.
+worth two, and the dump has to come from the burst rather than from before it — and at the session's
+own scope. `--focused --bundle` answers about that app's window whether or not any of it is exposed,
+so narrowing the dump beside a session that hints the whole screen computes the expected region from
+a list the session never had, and the run comes back holding something plausible from another
+window.
 
 Which is the reason to drive `bin/axshot --out` rather than the hotkey whenever the question is
 *which* region was captured. Its outcome line names the app, the role and the rect actually held, and

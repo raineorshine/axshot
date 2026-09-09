@@ -52,12 +52,13 @@ picked up is a shell question, and [docs/testing.md](docs/testing.md#asking-who-
 how to ask it. Build output (`Axshot.app/`, `bin/`, `.claude/`) is generated and ignored.
 
 There is one installed app, `/Applications/Axshot.app`, and the permission grants belong to its
-signature rather than its path — so any build signed with the same certificate satisfies them
-wherever it sits. What is genuinely single is the running instance, which owns the global hotkeys,
-and the login item, which names one bundle path. `build.sh` compiles inside the checkout and installs
-from there through the lock, which refuses while another session is driving the app. A session that
-wants a held lock does not ask again later: `wait` queues it and blocks until the release hands it
-over, so parallel worktrees test in the order they arrived.
+signature rather than its path — so any *bundle* signed with the same certificate satisfies them
+wherever it sits. A loose binary outside one does not, however it was signed: the requirement names
+the bundle identifier, and a bare Mach-O carries none. What is genuinely single is the running
+instance, which owns the global hotkeys, and the login item, which names one bundle path. `build.sh`
+compiles inside the checkout and installs from there through the lock, which refuses while another
+session is driving the app. A session that wants a held lock does not ask again later: `wait` queues
+it and blocks until the release hands it over, so parallel worktrees test in the order they arrived.
 
 ## Driving the app on a live machine
 
