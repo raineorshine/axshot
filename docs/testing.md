@@ -155,6 +155,11 @@ never appears. That is the app-driven half of the `kill -0` guard below — driv
 through its hotkey leaves no process of your own to test — and without it the hint letter and the
 Return land in whatever the drive activated.
 
+The layer is the whole test, not the owner. Every burst is bracketed by `--driving on`, and its two
+marks are windows of the same app one level and two above the overlay's — so a poll for "a window
+owned by Axshot" is satisfied by the border before the session exists, and reports the overlay up
+the instant the burst opened.
+
 Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks
 exactly like a real Escape — `cancelled=true` — and the only thing telling them apart is

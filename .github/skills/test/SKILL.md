@@ -218,8 +218,12 @@ Release first, then follow the `ship` skill.
   first. It gates the start of a burst, not the keys within one — the reason is in
   [docs/testing.md](../../../docs/testing.md#waiting-for-the-keyboard).
 - **The clipboard is the user's too.** Anything that drives a clipboard path overwrites whatever
-  they were carrying, and it is not restored by releasing the lock. Save it with `pbpaste` before
-  the first run and put it back after the last one.
+  they were carrying, and it is not restored by releasing the lock. Ask what is on it before
+  planning around it — `osascript -e 'clipboard info'` names the classes and touches nothing. Plain
+  text is the case `pbpaste` before and `pbcopy` after puts back. Anything else is not: a copied
+  image arrives in a dozen flavours at once and nothing on the command line writes them all back, so
+  the clipboard paths are untestable until the user has moved on. That is a result to report as
+  untested, not a reading that licenses overwriting what it just named.
 - **A capture takes whatever is frontmost.** Activate the app you mean — before every run, not once
   per test — or you will measure the wrong window and conclude the filter is broken.
 - **Some paths spend the user's money.** The transcription key sends a picture to the Claude API on
