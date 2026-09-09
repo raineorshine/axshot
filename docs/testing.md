@@ -95,6 +95,14 @@ Three edges:
   read a missing pink edge in a PNG as the border having failed; look at the screen. Judging how it
   *looks* means building with `sharingType = .readOnly` for the shot and reverting after — there is
   no way to photograph what a capture is defined not to see.
+
+  Whether it is *there* takes no picture at all. `CGWindowListCopyWindowInfo` reports owner, layer,
+  bounds and sharing state for a window no capture can see exactly as for any other, so the
+  assertion is a window owned by `Axshot` at the border's layer while a burst runs and none after —
+  which is also the only way a mark that was *removed* is shown to be gone, since a photograph of
+  that screen looks the same either way. Both ends animate and the window server answers mid-flight:
+  a probe fired straight after `--driving off` still lists the border, at a frame inset a little on
+  every side as it scales away. Read the second answer rather than the first.
 - **It expires after two minutes** and gives the foreground back on the way out, because the session
   that would have run `off` is the one that can die mid-burst. A drive longer than that re-issues
   `--driving on`, which pushes the deadline out rather than drawing a second border.
