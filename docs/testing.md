@@ -49,6 +49,14 @@ installed app; this is the mechanics it calls for.
 - `axshot --pid 1` runs the permission checks and exits at "no target app". Useful as a permission
   probe precisely because it draws no overlay — polling with a real capture would flash a
   full-screen overlay every few seconds and swallow the user's keystrokes while it was up.
+- **How a drawing *looks* is answerable before anything is installed.** A draw function is a
+  function of a rect and a clock, so a standalone `swift` script that calls it over sample content
+  and writes a PNG renders the real thing — the same arithmetic, the same `NSGradient`, the same
+  compositing — with no lock, no keyboard and no session. Render it over white and over black in
+  one image: an overlay drawing sits on whatever the window underneath happens to be, and the
+  failure that reads as a bug in the code is a colour that disappears into one of them. That is
+  where a palette and an amplitude get settled, across as many rounds as it takes, and the driven
+  run afterwards is then asking whether the app puts it on screen rather than whether it is right.
 
 ## Waiting for the keyboard
 
@@ -500,6 +508,21 @@ Timing is the other half of it. Something that shows for a few seconds and then 
 be photographed at three moments — up, mid-animation, gone — and appending the crops side by side
 (`magick a.png b.png c.png +append`) is what makes the sequence one thing to look at rather than
 three.
+
+Something that *repeats* is the easier case and does not need the recording below. Sample the rect
+on a fixed interval across more than one period — `screencapture -x -o -R` in a loop, straight after
+the key that starts it — and read one number per frame:
+
+    magick frame.png -format "%[fx:mean]\n" info:
+
+Frames that differ are the proof it moves, which no single still can give; a run of *identical*
+means is a pause, and identical to the last digit is the animation genuinely holding still rather
+than a slow stretch of it. That is how a cycle's shape — a pass, then a beat, then another pass —
+is read off a handful of PNGs. Two things to hold onto. `screencapture` takes appreciable time
+itself, so the interval between frames is longer than the `sleep` between them and the frame count
+per phase is a ratio rather than a duration. And the mean is over whatever the region happens to
+contain, so it answers about change and not about level: compare the frames to one taken before the
+animation started, which is the only reading that says how far from untouched any of them are.
 
 A still cannot show a transition, and a transition is what most overlay complaints are about — a
 flash, a gap, a thing that redraws twice. When the user sends a screen recording, read it frame by

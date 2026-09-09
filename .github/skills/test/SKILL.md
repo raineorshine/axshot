@@ -39,8 +39,12 @@ inside the lock.
 list need no lock — `--dump` never draws an overlay and never touches the installed app. Neither does
 photographing a rect it printed: `screencapture -x -o -R x,y,w,h` answers whether a computed region
 frames what it claims to, which is most of what a filter change is judged on and none of it needs the
-overlay, the keyboard or the live slot. Take the lock only once you are about to put a build in
-it.
+overlay, the keyboard or the live slot. Neither does judging how a drawing *looks*: a draw function
+rendered into a PNG by a standalone `swift` script is the real arithmetic over sample content, and
+settling a colour or an amplitude there leaves the driven run to ask only whether the app puts it on
+screen — see
+[docs/testing.md](../../../docs/testing.md#the-paths-that-need-no-interaction). Take the lock only
+once you are about to put a build in it.
 
 ## Procedure
 
