@@ -132,9 +132,12 @@ and toggling it is free — the answer is kept while the region stays held, so i
 without asking again. What it does not do is follow the arrows: the transcription was of that
 region's picture, and re-reading the next one is another call nobody asked for.
 
-While the request is out the overlay says `Transcribing…` and the keyboard stays swallowed; `Escape`
-cancels. A region costs roughly half a cent on `claude-opus-5` — about 1200 input tokens for a
-typical box.
+While the request is out the held box is dimmed and a wave of light and shade crosses it, rests a
+beat and crosses again, rather than a word being drawn over it: what is being read is those pixels,
+and they stay visible underneath. The band carries a dark half and a pale half, so it shows on a
+black terminal and a white page alike. Reduce Motion gets the word back.
+The keyboard stays swallowed for as long as the call takes; `Escape` cancels. A region costs
+roughly half a cent on `claude-opus-5` — about 1200 input tokens for a typical box.
 
 The box is a text field, and the caret is in it from the moment it appears. What either key puts
 there is usually nearly right and not quite — a heading and a timestamp the tree put either side of

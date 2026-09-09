@@ -151,12 +151,16 @@ back when it ends:
 ```bash
 bin/axshot --driving on
 # activate, drive, capture
+# end the session, then:
 bin/axshot --driving off
 ```
 
 `off` re-activates whatever had the foreground when `on` ran. It belongs at the end of every burst,
-not once at the end of the test — see
-[docs/testing.md](../../../docs/testing.md#saying-an-agent-has-the-foreground).
+not once at the end of the test, and the end of a burst is the last posted key — not the end of the
+script. Waiting on the session, reading its outcome and measuring what it captured all belong after
+`off`; see
+[docs/testing.md](../../../docs/testing.md#saying-an-agent-has-the-foreground), which is also why a
+trap is the failure net here rather than the ordinary exit.
 
 Then drive a real capture through the hotkey, not just the CLI, and confirm three things: a file
 appeared with the timestamped name; its pixel dimensions are twice the reported rect on a Retina
@@ -225,7 +229,8 @@ Release first, then follow the `ship` skill.
 
 - **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
   seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
-  not start one and walk away.
+  not start one and walk away. End a driven one at the last capture rather than letting it run while
+  the driver reads its output: everything the user types meanwhile lands in the overlay.
 - **The foreground is the user's too.** Every drive brings a window forward, and whatever the last
   activation left in front is where their next keystroke lands. `--driving off` puts it back; a burst
   that ends without it hands them an app nobody chose.

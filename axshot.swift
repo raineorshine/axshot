@@ -150,11 +150,22 @@
 // was of that region's picture, and re-reading for the next region is a second call and a second
 // charge no keystroke asked for.
 //
-// While the request is out the overlay says "Transcribing...", the hold deadline is pushed out to 90
+// While the request is out the held box wears a wave of light and shade rather than the word
+// "Transcribing": what is being read is those pixels, and a box with a word in it would sit on top
+// of the only thing worth looking at for the length of the wait. It is the one thing on the overlay
+// that moves under its own clock, which is the whole message -- an overlay that went still after a
+// keystroke is indistinguishable from one that did nothing -- and it is one wave across the box
+// rather than one per region in it, since what was sent was one picture of one rectangle. The box
+// is dimmed under it for the whole wait, and the band crosses, rests a beat and crosses again: one
+// that never stopped would read as a texture the box was wearing rather than as it being gone over.
+// The band carries a dark half and a pale half, which is what lets a wave with no colour in it show
+// on a black terminal and a white page alike. Reduce Motion gets the word back, a gradient standing
+// still saying nothing at all. The hold deadline is pushed out to 90
 // seconds so a slow call cannot be cut off mid-sentence, and Escape still cancels -- the tap is up
 // the whole time, so the keyboard is swallowed for as long as the call takes. What comes back is
 // drawn in a separate field from the joined text, so that the copy chords hand over what the region
-// said and never what axshot said about it.
+// said and never what axshot said about it; a failure is a word in that field, since a wave cannot
+// say why.
 //
 // The key comes from CLAUDE_API_KEY: the environment first, so a command line run can be given one
 // for a single invocation, then ~/.config/axshot/.env, then a .env in the working directory. The
@@ -1365,10 +1376,15 @@ final class HintView: NSView {
   /// elements comes back as a dozen lines -- so the joined form is put on screen before it is
   /// copied, in the one place the original is still next to it.
   var joined: String?
-  /// A word from the app rather than from the region -- "Transcribing..." while the request is out,
-  /// or why it failed. Drawn in the same box as the joined text, and deliberately not the same
-  /// field: the copy key hands over what the region said, and never what axshot said about it.
+  /// A word from the app rather than from the region -- why a transcription failed, and the word
+  /// the wave stands in for where Reduce Motion is asked for. Drawn in the same box as the joined
+  /// text, and deliberately not the same field: the copy key hands over what the region said, and
+  /// never what axshot said about it.
   var notice: String?
+  /// When the wave started, or nil for no wave: the held box wears one for as long as a
+  /// transcription is out. One fact rather than a flag beside a clock, since the phase is the only
+  /// thing the drawing wants and the flag would only ever say whether there is a phase.
+  var wave: Date?
   /// Where the caret sits in `joined` while Shift-E has the box open for typing, as a UTF-16 offset
   /// -- nil when it is closed, which is the only thing that says whether the next letter is a key
   /// or a character. Never drawn over a notice: that field is the app talking, and there is nothing
@@ -1565,6 +1581,15 @@ final class HintView: NSView {
     // A region held is the hints answered: they stop being drawn the moment one is, and come back
     // only when it is let go of -- through what is left of the mask, which is still receding.
     if selection != nil {
+      // A transcription in flight takes the box's place rather than filling it with a word: the
+      // request is about those pixels, and covering them to say so is the one thing the wait cannot
+      // afford. It waits on the same three conditions the box does -- a shutter is running bare, a
+      // mask still arriving is not yet the rectangle being described -- since it is the same
+      // announcement drawn a different way.
+      if let wave, let selection, !bare, mask?.level == 1 {
+        drawWave(in: selection, since: wave)
+        return
+      }
       if let plate = textBox() {
         NSColor(calibratedWhite: 0.08, alpha: 0.94).setFill()
         NSBezierPath(roundedRect: plate.box, xRadius: 4, yRadius: 4).fill()
@@ -1602,6 +1627,66 @@ final class HintView: NSView {
       let remaining = String(box.label.dropFirst(typed.count))
       style.drawPlate(remaining.uppercased(), topLeft: CGPoint(x: box.rect.minX, y: box.rect.maxY))
     }
+  }
+
+  /// One pass of the wave, edge to edge, and how long the box waits before the next one. A band
+  /// that crossed and immediately crossed again reads as a barber's pole -- a texture the box is
+  /// wearing -- where one pass, a beat, and another reads as something being gone over. The beat is
+  /// also what makes the dim legible as itself rather than as the leading edge of the next crest.
+  private static let waveSweep = 0.7
+  private static let waveRest = 1.0
+  /// The band's width as a fraction of the box, and how far into it the crests reach. Most of the
+  /// box wide: a swell the words are inside of rather than a line drawn across them.
+  private static let waveWidth: CGFloat = 0.8
+  private static let waveReach: CGFloat = 0.30
+
+  /// What the held box wears while its picture is out being read: a dim, and a band of light and
+  /// shade crossing it, with what is underneath still legible through both.
+  ///
+  /// The band carries a dark half and a pale half rather than running one way, which is what lets a
+  /// wave with no colour in it show on anything: the regions worth transcribing are as often a
+  /// black terminal as a white page, and a pale swell vanishes into one exactly where a dark one
+  /// vanishes into the other. Every pass carries both, so whichever the window is, half the band is
+  /// the half that reads.
+  ///
+  /// Across the whole box rather than each member of it: what was sent was one picture of one
+  /// rectangle, and a wave per region would say the call is per region.
+  private func drawWave(in region: CGRect, since started: Date) {
+    let elapsed = Date().timeIntervalSince(started)
+      .truncatingRemainder(dividingBy: Self.waveSweep + Self.waveRest)
+
+    // Held through the beat as well as the pass, since the box has to go on saying it is busy
+    // while nothing is crossing it -- and it is what the pale half of the band shows up against on
+    // a page that was already white.
+    NSColor(calibratedWhite: 0, alpha: 0.18).setFill()
+    NSBezierPath(rect: region).fill()
+    guard elapsed < Self.waveSweep else { return }
+
+    // From wholly off one edge to wholly off the other, so the band arrives and leaves rather than
+    // materialising at the margin, and at a constant rate: an eased pass spends its slow ends where
+    // the band is off the box and reads as a stall.
+    let half = Self.waveWidth / 2
+    let centre = -half + (1 + Self.waveWidth) * CGFloat(elapsed / Self.waveSweep)
+    let steps = 48
+    var colors: [NSColor] = []
+    var locations: [CGFloat] = []
+    for step in 0...steps {
+      let along = CGFloat(step) / CGFloat(steps)
+      let across = (along - centre) / half
+      // One full swing of a sine inside a cosine that closes at the band's edges: the swing is what
+      // makes it a dark half and a pale half, the closing is what keeps both ends of the band from
+      // landing on the box as a line. Nothing outside the band, which is the gap between passes
+      // drawn in space rather than in time.
+      let swell = abs(across) < 1 ? sin(across * .pi) * cos(across * .pi / 2) / 0.7071 : 0
+      colors.append(NSColor(calibratedWhite: swell > 0 ? 1 : 0,
+                            alpha: Self.waveReach * abs(swell)))
+      locations.append(along)
+    }
+    guard let gradient = NSGradient(colors: colors, atLocations: locations, colorSpace: .genericRGB)
+    else { return }
+    // Horizontal whatever shape the box is: reading is horizontal, so a wave crossing the words the
+    // way the eye does is a wave rather than a wipe over them.
+    gradient.draw(in: NSBezierPath(rect: region), angle: 0)
   }
 
   /// The text box exactly as it is drawn: where it sits, and the run laid out at the size it was
@@ -2146,6 +2231,8 @@ final class Session {
   /// The fade in flight, if there is one. Held so a hold landing mid-release turns the darkness
   /// around from where it is rather than queueing a second ramp behind the first.
   private var fading: Timer?
+  /// Turns the wave while a transcription is out, and is stopped on every path that takes it off.
+  private var waving: Timer?
   /// Set across the photograph, so a key arriving in that beat cannot start a second one.
   var photographing = false
   var cancelled = false
@@ -2463,6 +2550,40 @@ final class Session {
     fading = nil
   }
 
+  /// Say that a transcription is out: the held box wears a travelling wave until the answer lands.
+  ///
+  /// Reduce Motion gets the word back instead. A gradient that is not moving says nothing -- what
+  /// the wave carries is entirely in the movement -- so the fallback is the sentence it replaced
+  /// rather than one frame of it, which also leaves every check that reads a notice as the app
+  /// talking answering the way it always did.
+  ///
+  /// Only the box is invalidated, unlike the fade, which redraws the screen it is darkening: this
+  /// paints inside one rectangle and runs for as long as an API call rather than for a tenth of a
+  /// second, and a full overlay thirty times a second for that long is a different bill.
+  private func startWave() {
+    stopWave()
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+      view.notice = "Transcribing..."
+      return
+    }
+    view.wave = Date()
+    waving = Timer.scheduledTimer(withTimeInterval: 1 / 30, repeats: true) { [weak self] timer in
+      guard let self, let box = self.view.selection, self.view.wave != nil else {
+        timer.invalidate()
+        return
+      }
+      self.view.setNeedsDisplay(box)
+    }
+  }
+
+  /// Take the wave off. The word Reduce Motion put up in its place is a notice like any other and
+  /// goes the way every notice goes: cleared by whatever is putting something else in that field.
+  func stopWave() {
+    waving?.invalidate()
+    waving = nil
+    view.wave = nil
+  }
+
   /// Take the mask off and wait for it to go. Only for the exits that end in nothing: an exit on
   /// its way to a photograph is already waiting out a beat for the window server, and a fade in
   /// front of that is either a delay on the shot or a half-lit mask inside it.
@@ -2512,6 +2633,7 @@ final class Session {
     view.members = regions.count > 1 ? regions.map { viewRect($0.region.rect) } : []
     showMask(rect)
     view.notice = nil
+    stopWave()
     caret = nil
     anchor = 0
     beforeEdit = nil
@@ -2720,7 +2842,9 @@ final class Session {
   /// button draws a region. With a box up the whole overlay takes them, because a click that missed
   /// the box by a few points would otherwise start a rectangle over the words being read.
   func mouse(_ event: CGEvent, type: CGEventType) -> Bool {
-    guard let text = joined, view.notice == nil, !photographing else { return false }
+    // A request out is a box that is not on screen: the wave has its place, and a caret aimed into
+    // words nobody can see would be placed by arithmetic alone.
+    guard let text = joined, view.notice == nil, request == nil, !photographing else { return false }
     let string = text as NSString
     let point = CGPoint(x: event.location.x - overlayOrigin.x,
                         y: (flipBase - event.location.y) - overlayOrigin.y)
@@ -2960,10 +3084,11 @@ final class Session {
     // Off, back on, off again, all without asking twice. The answer is kept for as long as the
     // region is held, so the toggle costs nothing after the first press; only a region that has
     // never been read sends a picture anywhere.
-    if transcribed || view.notice != nil {
+    if transcribed || view.wave != nil || view.notice != nil {
       transcribed = false
       joined = nil
       view.notice = nil
+      stopWave()
       request?.cancel()
       request = nil
       deadline = Date().addingTimeInterval(30)
@@ -3009,7 +3134,7 @@ final class Session {
       return
     }
 
-    view.notice = "Transcribing..."
+    startWave()
     // Generous, and restarted again when the answer lands: the request has its own timeout, and a
     // hold that expired underneath a call in flight would take the overlay down mid-sentence.
     deadline = Date().addingTimeInterval(90)
@@ -3021,6 +3146,7 @@ final class Session {
         guard let self, !self.cancelled, self.chosen == nil, self.holds == token else { return }
         self.request = nil
         self.view.notice = nil
+        self.stopWave()
         if let text {
           self.transcription = text
           self.joined = text
@@ -3256,6 +3382,7 @@ final class Session {
     view.selection = nil
     view.members = []
     view.notice = nil
+    stopWave()
     hideMask()
     refresh()
   }
@@ -3833,6 +3960,7 @@ func runSession(_ options: Options) -> Outcome {
   // already been taken, just above, with the mask at whatever strength the picture wanted it.
   if session.chosen == nil && session.windowShot == nil { session.fadeOutMask() }
   session.stopFade()
+  session.stopWave()
   overlay.orderOut(nil)
 
   if let windowShot {

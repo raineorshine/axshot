@@ -123,8 +123,26 @@ Three edges:
 - **`off` restores the application, not the window.** macOS brings that app's own front window, which
   is the right one unless the user had a second window of the same app in front.
 
-A burst that can fail between the two ends should close itself from a trap rather than from the last
-line, or the border stays up until the ceiling catches it:
+The burst ends at the last posted key, not at the end of the script. End the session and take the
+border down on the next two lines, and leave everything a run wants to *know* until after them —
+waiting on a backgrounded session, reading its outcome line, measuring the PNGs it left. All of that
+reads files and asks the window server; none of it needs the screen. A script that keeps it inside
+the bracket holds the machine for the length of its own bookkeeping, and the bookkeeping is
+routinely longer than the drive:
+
+    # ... last capture
+    osascript -e 'tell application "System Events" to key code 53'
+    bin/axshot --driving off
+    trap - EXIT
+    wait $PID   # and the reading, and the measuring
+
+Ending the session is the more urgent half of that pair. The border is a mark on the screen the user
+can work around; the overlay is every keystroke on the machine, so a session left running while the
+driver reads its own output swallows what they type at it.
+
+A trap is the net for the paths that never reach those lines, and not how the burst normally ends —
+on the last line it fires *after* the bookkeeping, which is exactly what was meant to be outside the
+bracket:
 
     trap 'bin/axshot --driving off' EXIT
 
