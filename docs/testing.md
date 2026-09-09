@@ -494,6 +494,14 @@ to be taken back out to ask it again.
 
 Each of these cost time in the session that built the tool.
 
+- **A build that died with `Terminated: 15` was another session's lock operation.** `release` and
+  `install` both quit the running app with `pkill -f Axshot.app/Contents/MacOS/axshot`, and `-f`
+  matches the whole command line — so `swiftc -o <checkout>/Axshot.app/Contents/MacOS/axshot` carries
+  that string too and the compiler is killed alongside the app. Measured rather than reasoned about:
+  `pgrep` of that pattern one second into a cold build returns the `swift-frontend` pid beside the
+  running app's. Any worktree's build can be ended by any other session's release, in the checkout as
+  well as under the lock, and the signature is a SIGTERM with no compiler diagnostic above it. Re-run
+  it — and read the pattern as the bug rather than the build.
 - **A black screenshot means the display is asleep**, not that the window is missing. Anything
   visual is unverifiable until someone wakes it.
 - **Window queries go quiet while the session is locked.** `--dump` reporting `windows=0` for every

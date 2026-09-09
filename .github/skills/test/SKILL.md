@@ -185,6 +185,13 @@ Swap the prefix to `🔓 ` before releasing. Do not report this.
 Restores the snapshot, puts the app back the way it was found — running or not — and drops the lock.
 Do this as soon as the last capture is done; do not hold it while writing up results or shipping.
 
+"The way it was found" can be behind `origin/main`. The snapshot is the app as of the acquire, so a
+release after something else landed installs an app older than what has shipped. It heals on the next
+ship by anyone — step 6 of `ship` builds from the main checkout, which by then holds everything that
+accumulated — and outlives that only while a tested branch sits at `📦 ` and nobody ships. Releasing
+is not what puts a change on the user's machine; shipping is, and neither the ref moving nor the lock
+dropping is a build.
+
 Then retitle: `📦 ` if the change passed and is worth shipping without re-testing, otherwise drop the
 prefix. Do not report this.
 
