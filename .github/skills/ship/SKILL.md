@@ -149,8 +149,9 @@ checkout afterwards:
 
 That installs `/Applications/Axshot.app`, which is what the user actually runs. **If `install`
 refuses**, another session holds the lock and is mid-test; the ship has still happened, only the
-installed app lags. Say so in the report, with the command, since until someone runs it the app on
-the user's machine lacks what was just shipped.
+installed app lags. That is one line in the report -- another lock is open, and the change reaches
+the app at the next install -- and not an account of whose lock, what the snapshot did, or a command
+for the user to run. The next ship installs everything that accumulated, so nobody has to.
 
 **If the fast-forward fails** with local changes, leave them — never `checkout --` someone's work
 away. Whoever fast-forwards next picks up every commit that accumulated, so a skipped one costs
