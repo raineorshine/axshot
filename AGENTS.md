@@ -238,6 +238,16 @@ explained where it is implemented.
   reached from a held region — the sidebar rather than the row in it — and a screenshot is very
   often of the container. All three stop at the window they started in, document order between two
   trees saying only which was in front.
+- **Shift reaches, and the shot is then the box around everything held.** It composes with whichever
+  modifier already chose the axis — bare for the screen step, Option for the tree — so a selection
+  is one rule rather than a key per direction, and the opposite arrow gives back the region last
+  reached. A capture is one rectangle, so several regions is the rectangle they sit in: that box is
+  what the mask has to be drawn around for the overlay to go on showing what will be photographed,
+  and the brackets move onto each region, that being the part the mask can no longer say. Everything
+  that reads the held region reads the box instead — the shutter, the margin, Option-Up, the
+  transcription — while the words stay each region's own, handed over in document order. Shift is
+  not free on the letters those keys share: HJKL's Shift is already a word, so the reach is on the
+  arrows alone.
 - **Which display a key means is answered by the pointer.** Not the one the held region is on, not
   the one the front window is on: the crosshair follows the pointer for the whole session and is the
   only thing on a two-display desktop that says where the keyboard is aimed. Every key that names a

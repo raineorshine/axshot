@@ -98,6 +98,14 @@ say — and yours then merges without a marker and does nothing. Read the whole 
 lands in, not just the hunk, and re-test after any rebase that touched behaviour. The compile
 proves nothing here; the change you tested is no longer the change you have.
 
+**And a merge that changes what a key means changes what the request meant.** The trap above is
+code that no longer runs; this is code that runs and answers the wrong question. A branch is
+specified in the vocabulary the app had when it was asked for — "Shift and the left arrow adds the
+previous node" — and `main` can have redefined that vocabulary underneath it, moving the previous
+node onto a different chord. The conflict-free resolution then implements the old sentence rather
+than the one that was wanted, and nothing in the diff says so. After a rebase brings behaviour in,
+re-read the header comment on what the branch touches, then re-read the request against it.
+
 That trap has a mechanical form worth checking by hand whenever a branch adds a field that has to be
 kept in step with an existing one: every assignment of the old field is a place the new one belongs
 beside it, and the branch that landed first can have added assignments your side has never seen.

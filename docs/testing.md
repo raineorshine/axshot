@@ -169,6 +169,15 @@ The typed label is still *a* valid label, so a region is held, the shutter fires
 something else entirely: nothing in the run says the target moved. Aim at something that does not
 redraw, and check what came back rather than what was asked for.
 
+A step key that appears to do nothing has two readings, and the outcome line does not separate them:
+the key was never reached, or it was reached and found nothing to land on. Each of them beeps and
+stays put when the candidate list holds no receiver — no leaf that way on screen, no sibling left in
+the window, no kept box containing what is held — and the nesting collapse makes the last of those
+ordinary rather than exotic: a toolbar button whose wrapper was dropped has nothing to widen to, so
+Option-Up on it is correctly a beep. Run the same key from the same region on a build that predates
+the change, or read the dump for a candidate that could receive it, before reading a beep as a key
+that was never wired up.
+
 A drive that needs only *a* starting region can name nothing at all. An arrow with the hints up
 holds the largest region, and the arrows reach every other region from there, so a sequence of
 arrows has no label in it to be renumbered — and it is a region a dump of the same burst names
