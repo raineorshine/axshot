@@ -71,6 +71,16 @@ or a right-click under the mask no longer reaches the window beneath — content
 under hints that were computed once would leave every one of them pointing at something else.
 Neither the crosshair nor the numbers land in a shot.
 
+`+` and `-` put a margin around what is held, ten points to the press, for the boxes the tree draws
+tight to their own contents — a paragraph whose text runs to the edge of its box is otherwise
+photographed with the words against the edge of the picture. It is what takes a hinted region
+outside the window it was clipped to, and the mask has drawn what it will pull in before `Return` is
+pressed. `-` beeps at zero, a margin being space around the region rather than a crop into it, and
+`+` stops at the edge of the screens. It is asked of whatever is held, so a dragged rectangle and a
+half display take it too, and it stays put across a step and a return to the hints — it is about how
+the shot should look rather than about which region it is of. The picture only: the words `⌘⇧C`
+copies and the picture `⇧T` reads are still the region's own.
+
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:
 

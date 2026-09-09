@@ -324,6 +324,34 @@
 // cursor, and the overlay is ordered out before the shutter and drawn bare across the one Shift-T
 // fires.
 //
+// `+` and `-` put a margin around whatever is held, ten points to the press. A box out of the tree
+// is the element and nothing else, which is a tight crop rather than a framed one: a paragraph
+// whose text runs to the edge of its own box is photographed with the words against the edge of the
+// picture, and a button comes out as a button-shaped hole. The margin is the room back, and it is
+// what takes a hinted region outside the window it was clipped to -- what it pulls in is whatever
+// the region sits next to, which is generally the page it is on, and the mask has drawn it before
+// Return is pressed. It stops at the edges of the screens, past which there is nothing to
+// photograph, and at nothing on the way down: a margin is space around the region rather than a
+// crop into it, so `-` puts back what `+` asked for and beeps at zero. The step that would change
+// nothing is refused rather than counted, since a margin still counting up past the screen would
+// owe several presses of `-` before anything moved back.
+//
+// It is asked of whatever is held rather than of the candidate list, so a dragged rectangle and a
+// half display take it exactly as a hinted region does: a rectangle drawn by eye is as likely to
+// have been drawn tight as a box out of a tree, and neither is a reason for the key to go quiet. It
+// outlives a step and a return to the hints, unlike everything else a hold carries, because it is a
+// statement about how the shot should look rather than about which region it is of. And it is the
+// picture only -- the words the copy chords hand over, and the picture Shift-T reads, are still the
+// region's own, since padding that reached into the paragraph next door would be text the region
+// never said.
+//
+// They are the characters the layout types rather than the keys they sit on, like `?` and Shift-J
+// -- arithmetic is a word, not a hand shape -- and both characters a key can type count, so Shift
+// is neither asked for nor refused: `+` is Shift-`=` on most layouts, and a hand holding Shift for
+// it would otherwise find `-` typing `_` and doing nothing. The two are pressed one after the other
+// on the same number, and a pair where one key wants Shift and the other refuses it cannot be
+// alternated without letting go in between.
+//
 // A question mark puts the whole list of keys on screen, grouped by whether it is the hints or a
 // held region that reads them, and dims what is behind it. There is nowhere else to put a legend
 // mid-session: the overlay covers the screen and the keys are the only interface it has, so the
@@ -1672,6 +1700,7 @@ enum HelpSheet {
         ("\u{2190} \u{2192} or H L", "select the next/prev region"),
         ("\u{2191} or K", "select the parent region"),
         ("\u{2193} or J", "select the child region"),
+        ("+ -", "grow or shrink the margin around it"),
       ]),
       ("Editing Text", [
         ("click or drag", "put the caret there, or select"),
@@ -1832,6 +1861,20 @@ final class Session {
   /// ascent is the only thing that records a child; stepping sideways abandons the descent, because
   /// the remembered child is no longer inside what is held.
   var descent: [Int] = []
+  /// How far the shot reaches outside the held region, in points, as `+` and `-` have left it. The
+  /// box came off the tree and is the element and nothing else, which is a tight crop rather than a
+  /// framed one; the margin is the room back. It is a statement about how the shot should look
+  /// rather than about which region it is of, so it outlives a step and a return to the hints,
+  /// unlike everything else a hold carries -- the framing that was wanted for one region is
+  /// generally what is wanted for the next.
+  ///
+  /// The picture only. The words either copy chord hands over, and the picture Shift-T reads, stay
+  /// the region's own: padding that pulled in the paragraph next door would be text the region
+  /// never said.
+  var margin: CGFloat = 0
+  /// One press of `+` or `-`. Ten points is a step that can be seen at a glance without three of
+  /// them adding up to a second region around the first.
+  static let marginStep: CGFloat = 10
   var chosen: Candidate?
   /// Set alongside `chosen` when Command-Shift-C ended the session: the region's text is wanted,
   /// and the shutter is not fired at all.
@@ -2056,6 +2099,21 @@ final class Session {
       // Shift-E on whatever those two put in the box. A letter again, and for the third time the
       // same reason: it is the word, not the key the word starts on.
       if event.flags.contains(.maskShift), typedLetter(event) == "e" { beginEdit(); return }
+      // The margin, before the arrows and the delete: `+` and `-` frame the shot without changing
+      // which region it is of. Read as the characters the layout types rather than as the keys they
+      // sit on, for the reason Shift-J is -- arithmetic is a word, not a hand shape.
+      //
+      // Both characters a key can type count, so Shift is neither asked for nor refused. `+` is
+      // Shift-`=` on most layouts, and a hand holding Shift for it finds `-` typing `_`: the two
+      // keys are pressed one after the other, adjusting the same number in either direction, and a
+      // pair where one wants Shift and the other refuses it cannot be alternated without letting go
+      // between presses. Taking all four characters is also what answers a synthesised Shift-`=`,
+      // which carries the flag without always carrying the shifted character.
+      switch typedLetter(event) ?? "" {
+      case "+", "=": widen(by: Self.marginStep); return
+      case "-", "_": widen(by: -Self.marginStep); return
+      default: break
+      }
       if keyCode == 51 { release() }  // delete, back to the hints
       guard let index = heldIndex else {
         // A dragged region is not in the candidate list: there is no line of ancestors to widen
@@ -2173,6 +2231,14 @@ final class Session {
     }
   }
 
+  /// The held region with the margin `+` and `-` have left around it, stopped at the edges of the
+  /// screens: past those there is nothing to photograph. In the tree's own coordinates, which is
+  /// what both callers want -- the shutter aims in them, and the mask is drawn from `viewRect` of
+  /// this rather than from an outset applied a second time in the view's.
+  func framed(_ rect: CGRect) -> CGRect {
+    rect.insetBy(dx: -margin, dy: -margin).intersection(screenArea)
+  }
+
   /// Hold this candidate: mask around it, and restart the deadline, since every hold is a decision
   /// the run loop could not have known to wait for.
   func hold(_ index: Int) { hold(candidates[index], at: index) }
@@ -2185,7 +2251,7 @@ final class Session {
     holds += 1
     held = candidate
     heldIndex = index
-    let rect = viewRect(candidate.rect)
+    let rect = viewRect(framed(candidate.rect))
     view.selection = rect
     showMask(rect)
     view.notice = nil
@@ -2663,6 +2729,8 @@ final class Session {
     CATransaction.flush()
     Thread.sleep(forTimeInterval: Double(delayMs) / 1000)
     let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("axshot-transcribe.png")
+    // The region's own box rather than the framed one, whatever the margin is: padding is room
+    // around the picture, and the words standing in it belong to whatever the region sits next to.
     let captured = capture(region.rect, to: path)
     view.bare = false
     let png = captured ? FileManager.default.contents(atPath: path) : nil
@@ -2757,6 +2825,34 @@ final class Session {
           candidates[index + 1].window == candidates[index].window,
           candidates[index + 1].depth > candidates[index].depth else { NSSound.beep(); return }
     hold(index + 1)
+  }
+
+  /// Put a margin around the held region, or take one off. A box out of the tree is the element and
+  /// nothing else, so a paragraph whose text runs to the edge of its own box is photographed with
+  /// the words against the edge of the picture; this is the room back, and the mask has already
+  /// drawn what it will pull in before Return is pressed.
+  ///
+  /// Asked of whatever is held rather than of the candidate list, so a dragged rectangle and a half
+  /// display take it as a hinted region does -- unlike the arrows, which have a line of ancestors to
+  /// walk and nothing to walk it on. The mask is moved rather than faded in again: the darkness is
+  /// already on screen and being looked at, and this is the same region drawn slightly larger.
+  ///
+  /// It stops at nothing on the way down -- a margin is space around the region rather than a crop
+  /// into it, so `-` puts back what `+` asked for and beeps at zero -- and at the edges of the
+  /// screens on the way up, where the box being asked for is already the box that would be
+  /// photographed. Refusing the step that changes nothing is what keeps the two ends honest: a
+  /// margin that carried on counting past the screen would owe several presses of `-` before
+  /// anything moved back.
+  func widen(by points: CGFloat) {
+    guard let region = held else { return }
+    let before = margin
+    margin = max(0, margin + points)
+    let rect = viewRect(framed(region.rect))
+    guard margin != before, rect != view.selection else { margin = before; NSSound.beep(); return }
+    view.selection = rect
+    showMask(rect)
+    deadline = Date().addingTimeInterval(30)
+    refresh()
   }
 
   /// Back from the mask to the hints, with nothing typed.
@@ -3354,7 +3450,8 @@ func runSession(_ options: Options) -> Outcome {
   guard let chosen = session.chosen else {
     return Outcome(code: 11, line: "windows=\(targets.count) cancelled=true\(session.settings ? " settings=true" : "") walk_ms=\(walkMs) total_ms=\(millis(since: start))", settings: session.settings)
   }
-  let box = chosen.rect
+  // What `+` and `-` left, clamped to the screens: past those there is nothing to photograph.
+  let box = session.framed(chosen.rect)
   let destination: Destination = session.toClipboard ? .clipboard : options.destination
   let path = destination.resolve()
   guard capture(box, to: path) else {
