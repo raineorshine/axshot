@@ -415,6 +415,19 @@ display the offsets are twice the coordinates the code uses:
     screencapture -x -o /tmp/screen.png
     magick /tmp/screen.png -crop 700x520+2240+1392 +repage -resize 200% /tmp/corner.png
 
+Nor does a low-contrast one at any size, and that failure is the worse of the two because it reads
+as absence rather than as blur. The mask is a black fill at 0.55, and a whole screen resized to look
+at both look alike — the eye reports "no mask" on a picture that has one, which sends the session
+hunting a bug in the drawing that is not there. Measure instead, and measure the same content
+against itself unmasked, since what a half-lit screen comes out at depends entirely on what is on
+it:
+
+    magick shot.png -crop 50%x100%+1470+0 +repage -format "%[fx:mean]" info:
+
+One sample, the same two windows a second apart: 0.89 with the hints up against 0.54 with a region
+held. It is the gap that answers, not either number — a mask that never drew leaves the two readings
+equal, which is the one thing no amount of looking at the pictures will tell you.
+
 Timing is the other half of it. Something that shows for a few seconds and then animates away has to
 be photographed at three moments — up, mid-animation, gone — and appending the crops side by side
 (`magick a.png b.png c.png +append`) is what makes the sequence one thing to look at rather than

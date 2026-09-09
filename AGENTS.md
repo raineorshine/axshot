@@ -217,6 +217,12 @@ explained where it is implemented.
   line of ancestors and descendants; Left and Right move across it and skip that line entirely. A
   step that lands on a parent or a child is the same region drawn bigger or smaller, which is a
   keystroke the other axis already spends.
+- **Which display a key means is answered by the pointer.** Not the one the held region is on, not
+  the one the front window is on: the crosshair follows the pointer for the whole session and is the
+  only thing on a two-display desktop that says where the keyboard is aimed. Every key that names a
+  screen rather than a region reads it that way, and takes the strip below the menu bar with it for
+  the same reason each time — no ordinary window is drawn there, so nothing the key was reached for
+  can be lost with it. A new one inherits both answers rather than picking again.
 - **One hotkey; the hold decides where the shot goes.** The letter masks everything outside the
   region rather than firing the shutter, because the region came from a tree the app describes and
   the one thing worth seeing before the capture is what that tree handed over. Which destination a
