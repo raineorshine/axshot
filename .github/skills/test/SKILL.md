@@ -200,6 +200,13 @@ If the installed app changed underneath you, release refuses rather than discard
 someone built on main mid-test. Pick `--keep` if that build was intentional; the snapshot path is
 printed either way.
 
+It also refuses when the *snapshot* is the thing that is unusable: the acquire prints "live app
+snapshotted" whether or not the copy behind it finished, and only the release finds out. `--keep` is
+the answer there and `--force` is not -- there is nothing to restore, and the live app is a real
+build where the snapshot is a half-copied one. What it costs is the app the user had, so say in the
+report that the branch's build is still installed, and ship or reinstall rather than leaving that
+unsaid.
+
 ### 9. Ship
 
 Release first, then follow the `ship` skill.

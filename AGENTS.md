@@ -207,7 +207,11 @@ explained where it is implemented.
   hotkey chords are hand shapes and are read as physical keys, so they stay where the hand is on any
   layout; a key chosen because of the word it stands for is read as the letter the layout types, so
   it stays where the word is. Adding a key means deciding which of the two it is before deciding
-  where it goes.
+  where it goes -- and, for a key the hold reads, whether it applies to a region that is not in the
+  candidate list. A dragged rectangle and a half display are held exactly as a hinted region is and
+  have no index, so where the key sits either side of that guard is the whole of the answer: the
+  arrows are past it because they walk the tree, and anything acting on the rectangle itself belongs
+  in front of it.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
 - **The arrows are two axes, not four directions.** Up and Down move along the held region's own

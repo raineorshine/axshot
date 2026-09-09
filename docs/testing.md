@@ -134,6 +134,14 @@ whole of the repair, and a shifted punctuation key is not a case change. `keystr
 character and never reaches the repair. Assert an edit with letters, and read a stray comma in the
 result as the driver rather than as the caret.
 
+The same gap swallows a key *matched* on a shifted character rather than typed. `keystroke "+"`
+arrives as `=` with the flag, so a driven run that passes has exercised whatever the unshifted
+character does and says nothing about the shifted one -- and it looks like a pass, because the key
+either way is a key the session acts on. Reach it the way a held chord is reached, from a throwaway
+option on axshot itself: build the event with `CGEvent(keyboardEventSource:virtualKey:keyDown:)` and
+overwrite what it says with `keyboardSetUnicodeString` before posting it, which is the only route
+that puts a character the layout would need Shift for in front of the tap.
+
 A label read from `--dump` is not the label the session will use. They are two walks of a tree that
 moves, and anything re-laying out between them renumbers the hints — a clock ticking over is enough.
 The typed label is still *a* valid label, so a region is held, the shutter fires and the file is of
