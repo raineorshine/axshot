@@ -458,10 +458,9 @@
 // a burst brackets itself: --driving on before it takes the foreground, --driving off when it lets
 // go. While it holds, the running app draws a border around every screen, in the pink of the hint
 // style -- the plate colour picked for turning up in the fewest interfaces, which is the property
-// wanted here too -- and the pointer carries a shadow in the same pink, since a hand reaching for
-// the mouse is not looking at a screen edge. Letting go puts the foreground back where the burst
-// found it. It marks the burst and not the test: a build being tried by hand is the user's own
-// session, and a border up for an hour is a colour nobody sees by the second look.
+// wanted here too. Letting go puts the foreground back where the burst found it. It marks the burst
+// and not the test: a build being tried by hand is the user's own session, and a border up for an
+// hour is a colour nobody sees by the second look.
 //
 // The screen and not the frontmost window, because what a burst has taken is the machine. A band
 // around one window says the drive is happening in there, and the next thing a burst does is
@@ -4481,9 +4480,9 @@ final class HelpSheetView: NSView {
 /// Nothing about a driven run looks different from the outside. The windows that come forward are
 /// the user's own applications, the keystrokes arrive on the keyboard they are typing on, and the
 /// app doing it is the app they installed -- so a burst says so: `axshot --driving on` before it
-/// takes the foreground and `--driving off` when it lets go, and for as long as it holds, whatever
-/// window is frontmost is drawn with a border in the pink hint style. Pink because it is the plate
-/// colour chosen for appearing in the fewest interfaces, which is the same property wanted here.
+/// takes the foreground and `--driving off` when it lets go, and for as long as it holds, every
+/// screen is drawn with a border in the pink hint style. Pink because it is the plate colour chosen
+/// for appearing in the fewest interfaces, which is the same property wanted here.
 ///
 /// It marks the *drive* and not the test. A build under the test lock that the user is trying by
 /// hand is their own session at their own keyboard, and a border up for the whole time the lock is
@@ -4510,22 +4509,14 @@ final class DriveFrame {
   /// it out, which is how a longer drive asks for more.
   private static let ceiling: TimeInterval = 120
 
-  /// How much room the pointer's shadow gets. Big enough to read as cast by the arrow and not as a
-  /// dot beside it, small enough that it is still the pointer being looked at.
-  private static let halo = CGSize(width: 46, height: 46)
-
   private static var current: DriveFrame?
 
   private let window: NSWindow
   private let view: DriveFrameView
-  /// The shadow that follows the pointer. Its own window, because a window is the only thing this
-  /// app can put on screen without taking the keyboard, and the pointer is somewhere the band is not.
-  private let pointer: NSWindow
   /// Whoever had the foreground when the burst began.
   private let interrupted: NSRunningApplication?
   private var timer: Timer?
   private var watch: NSObjectProtocol?
-  private var mouse: Any?
   private var deadline = Date()
 
   /// Listens for both ends. Registered by the menu bar app and by nothing else: the frame is a
@@ -4575,23 +4566,8 @@ final class DriveFrame {
     window.contentView = view
     window.orderFrontRegardless()
 
-    pointer = NSWindow(contentRect: CGRect(origin: .zero, size: Self.halo), styleMask: .borderless,
-                       backing: .buffered, defer: false)
-    pointer.isOpaque = false
-    pointer.backgroundColor = .clear
-    pointer.hasShadow = false
-    pointer.ignoresMouseEvents = true
-    // One above the band, since it marks a thing that moves across it.
-    pointer.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
-    pointer.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-    pointer.sharingType = .none
-    pointer.alphaValue = 0.6
-    pointer.contentView = DriveCursorView(frame: CGRect(origin: .zero, size: Self.halo))
-    pointer.orderFrontRegardless()
-
     deadline = Date().addingTimeInterval(Self.ceiling)
     layout()
-    trackPointer()
     // The one thing that moves the band now. A screen coming or going, or changing resolution, is
     // the only event that changes where the edge of the desktop is -- where a window's edge changed
     // with every activation, every drag and every resize, none of which this has to hear about any
@@ -4600,28 +4576,11 @@ final class DriveFrame {
       forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
         self?.layout()
       }
-    // Mouse-moved is not posted to an app that is not frontmost, so this is a global monitor and not
-    // a window's own tracking: the app is never frontmost, which is the whole of why it can watch.
-    mouse = NSEvent.addGlobalMonitorForEvents(
-      matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]) { [weak self] _ in
-        self?.trackPointer()
-      }
-    timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+    // The ceiling is the only thing this watches, and a second of slack on two minutes is nothing.
+    timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       guard let self else { return }
-      if Date() >= self.deadline { DriveFrame.end(); return }
-      // The monitor catches every move a person makes; this catches the pointer being put somewhere
-      // rather than moved there, which posts nothing at all.
-      self.trackPointer()
+      if Date() >= self.deadline { DriveFrame.end() }
     }
-  }
-
-  /// Under the arrow rather than around its tip. The hotspot is the tip and the arrow hangs down and
-  /// to the right of it, so the shadow is offset the same way -- centred on the arrow's body, in the
-  /// direction a shadow falls, instead of ringing the one point the pointer is not drawn at.
-  private func trackPointer() {
-    let at = NSEvent.mouseLocation
-    pointer.setFrameOrigin(CGPoint(x: at.x + 5 - Self.halo.width / 2,
-                                   y: at.y - 7 - Self.halo.height / 2))
   }
 
   /// Where the band goes: one around each screen. Every screen and not the bounding box of them,
@@ -4640,9 +4599,7 @@ final class DriveFrame {
   private func close() {
     timer?.invalidate()
     if let watch { NotificationCenter.default.removeObserver(watch) }
-    if let mouse { NSEvent.removeMonitor(mouse) }
     window.orderOut(nil)
-    pointer.orderOut(nil)
     guard let interrupted, !interrupted.isTerminated,
           interrupted.processIdentifier != getpid() else { return }
     interrupted.activate(options: [])
@@ -4739,35 +4696,6 @@ final class DriveFrameView: NSView {
         ring.frame = rect.insetBy(dx: inset, dy: inset)
       }
     }
-  }
-}
-
-/// The pointer, said the same way. The band marks the window a burst is working in; a person
-/// reaching for the mouse is not looking at a window edge, and the pointer is the one thing on
-/// screen they are certain to be looking at. So it carries a pink shadow for as long as the burst
-/// runs -- offset down and right, where a shadow falls, rather than a ring centred on the tip, which
-/// reads as a target and not as something being cast.
-///
-/// It follows rather than replaces. A background app cannot set the system cursor -- `NSCursor` only
-/// reaches a cursor rect in a window of the app that owns the keyboard, which is the one thing this
-/// app must never be -- so the shadow is a small window of its own, tracking the pointer off a global
-/// mouse monitor. It trails the hardware cursor by a frame under a fast flick, which is the price,
-/// and it is not one a driven burst pays: a burst moves the keyboard, and the pointer is sitting
-/// wherever the user left it.
-final class DriveCursorView: NSView {
-  override var isFlipped: Bool { false }
-  override func isAccessibilityElement() -> Bool { false }
-
-  override func draw(_ dirtyRect: NSRect) {
-    NSColor.clear.set()
-    dirtyRect.fill()
-    let pink = HintStyle.pink.line
-    let centre = CGPoint(x: bounds.midX, y: bounds.midY)
-    // A core that holds its colour before it falls away, rather than a linear ramp -- a shadow has an
-    // edge somewhere, and a straight fade from the centre reads as a smudge beside the pointer.
-    NSGradient(colors: [pink.withAlphaComponent(0.95), pink.withAlphaComponent(0.8), pink.withAlphaComponent(0)],
-               atLocations: [0, 0.35, 1], colorSpace: .deviceRGB)?
-      .draw(fromCenter: centre, radius: 0, toCenter: centre, radius: bounds.width / 2, options: [])
   }
 }
 

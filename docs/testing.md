@@ -82,20 +82,19 @@ posts a key or draws an overlay:
     # activate the target, send the hint, send Return
     bin/axshot --driving off
 
-`on` makes the running app border every screen in the pink hint style and put a shadow of the same
-pink under the pointer; `off` takes both down and
-re-activates whatever application had the foreground when `on` was issued. Neither draws anything in the process it is typed in — the border
-is a window belonging to the running app, and these two runs are the wire to it. So both report
-`app=none` and exit 3 when no app is running, which is the only thing that would say the burst was
-marking nothing.
+`on` makes the running app border every screen in the pink hint style; `off` takes it down and
+re-activates whatever application had the foreground when `on` was issued. Neither draws anything in
+the process it is typed in — the border is a window belonging to the running app, and these two runs
+are the wire to it. So both report `app=none` and exit 3 when no app is running, which is the only
+thing that would say the burst was marking nothing.
 
 Three edges:
 
-- **Both marks are out of every screenshot, including the one being tested.** Their sharing type
-  excludes them, so a capture that runs while they are up photographs whatever they were drawn over.
-  Do not read a missing pink edge in a PNG as the border having failed; look at the screen. Judging
-  how either one *looks* means building with `sharingType = .readOnly` for the shot and reverting
-  after — there is no way to photograph what a capture is defined not to see.
+- **The border is out of every screenshot, including the one being tested.** Its sharing type
+  excludes it, so a capture that runs while it is up photographs whatever it was drawn over. Do not
+  read a missing pink edge in a PNG as the border having failed; look at the screen. Judging how it
+  *looks* means building with `sharingType = .readOnly` for the shot and reverting after — there is
+  no way to photograph what a capture is defined not to see.
 - **It expires after two minutes** and gives the foreground back on the way out, because the session
   that would have run `off` is the one that can die mid-burst. A drive longer than that re-issues
   `--driving on`, which pushes the deadline out rather than drawing a second border.
@@ -163,10 +162,10 @@ never appears. That is the app-driven half of the `kill -0` guard below — driv
 through its hotkey leaves no process of your own to test — and without it the hint letter and the
 Return land in whatever the drive activated.
 
-The layer is the whole test, not the owner. Every burst is bracketed by `--driving on`, and its two
-marks are windows of the same app one level and two above the overlay's — so a poll for "a window
-owned by Axshot" is satisfied by the border before the session exists, and reports the overlay up
-the instant the burst opened.
+The layer is the whole test, not the owner. Every burst is bracketed by `--driving on`, and its
+border is a window of the same app one level above the overlay's — so a poll for "a window owned by
+Axshot" is satisfied by that border before the session exists, and reports the overlay up the
+instant the burst opened.
 
 Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks

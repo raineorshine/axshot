@@ -74,12 +74,11 @@ separates a person's keypress from one this session posted;
 [docs/testing.md](docs/testing.md#waiting-for-the-keyboard) is the measurement and its edges.
 
 And say so while you hold it. `bin/axshot --driving on` opens a burst and `bin/axshot --driving off`
-closes it. While it is on, the app draws a pink border around whatever window is frontmost and a
-pink shadow on the pointer, so a window arriving uninvited reads as this session rather than as the
-machine misbehaving — and closing the burst hands the foreground back to whoever had it before the
-burst took it. Both ends belong to
-the burst and not to the test: a build the user is trying by hand is their own session at their own
-keyboard, and the border is off for it.
+closes it. While it is on, the app draws a pink border around every screen, so a window arriving
+uninvited reads as this session rather than as the machine misbehaving — and closing the burst hands
+the foreground back to whoever had it before the burst took it. Both ends belong to the burst and
+not to the test: a build the user is trying by hand is their own session at their own keyboard, and
+the border is off for it.
 
 Then hold the foreground for a second, not for a stretch: activate, send the hint, send Return, and
 let go. Everything that is not the keystrokes — reading `--dump` output, checking the PNG, deciding
