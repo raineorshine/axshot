@@ -280,6 +280,12 @@ explained where it is implemented.
   is never unheld, was weighed and turned down — it means rewriting ownership onto a process that has
   not woken yet, tracking that process's liveness, and refreshing the snapshot wherever the live app
   no longer matches it, to close a window that a refusal already covers.
+- **`origin/main` advances by fast-forward only, and "merge main" names the rebase.** A branch
+  squashes onto it and pushes, so the history carries no merge commits and a rejected push costs a
+  rebase and a retry rather than anything else. Both skills say the word loosely — `ship` is titled
+  "finish change → merge to main" and calls a rebase conflict a merge — so an instruction to merge
+  main before testing or shipping is the fetch-and-rebase each of them already opens with, and not a
+  request to start keeping merge commits.
 
 ## Changing the region filter
 
