@@ -86,17 +86,27 @@ which session is ahead. Do the lock-free work in the meantime (`--dump`, editing
 not build: `build.sh` installs, and the install is what the lock exists to serialise. Cancelling the
 background task leaves the queue.
 
-### 3. Build and install
+### 3. Rebase on origin/main, then build and install
 
-Rebase first if the branch is behind. A worktree here can be many commits behind `origin/main` while
-carrying nothing of its own — several land during a single test — and `build.sh` compiles what the
-worktree has, so installing without rebasing puts superseded `axshot.swift` in the live slot and
-everything after this step measures code that main replaced. Commit first if the tree is dirty: a
-rebase refuses one, and the stash is shared with every other worktree.
+Fetch and rebase every time, not only when the branch looks behind. A worktree here can be many
+commits behind `origin/main` while carrying nothing of its own — several land during a single test —
+and `build.sh` compiles what the worktree has, so installing without rebasing puts superseded
+`axshot.swift` in the live slot and everything after this step measures code that main replaced.
+Whether it is behind is not a thing to judge from what the session remembers: the fetch is what
+answers it, and the answer costs nothing when it is no. Commit first if the tree is dirty: a rebase
+refuses one, and the stash is shared with every other worktree.
 
 ```bash
 git fetch origin && git rebase origin/main && ./build.sh
 ```
+
+The `&&` is load-bearing — a rebase that stops on a conflict fails the chain, so `build.sh` never
+puts a half-merged tree in the live slot. What it leaves is a worktree mid-rebase, which is conflicts
+to resolve and not a command to run again. Resolve them the way
+[`ship` step 3](../ship/SKILL.md#3-rebase-on-originmain) says to; its traps are about the rebase
+rather than about shipping, and they apply here unchanged. Then re-run the line above, and read what
+the rebase pulled in before trusting anything measured after it: a conflict that resolved cleanly can
+still leave the change doing nothing, and the build proves only that it compiles.
 
 The signing line must read `signed by Axshot Local Signing`. If it says `signed by -`, the build fell
 back to ad-hoc: **both permission grants are dead for that bundle**, `install` will refuse it, and

@@ -105,12 +105,19 @@ Each merges cleanly and the compiler is content, because nothing in the language
 together — so grep the old field's assignments in the merged file and look for the new one next to
 every one of them.
 
+Re-run `./build.sh --no-install` after any rebase that brought code in. Step 1 signed off on the
+tree as it was before this step, which is not the tree being pushed — and a rebase is exactly where
+a compile stops being a formality, since resolving a conflict is the one moment in this procedure
+where a person writes Swift.
+
 Re-testing takes the lock again, so the title goes back to `🔒 ` while it is held and to `🚀 ` when it
 is released. The question a prefix answers is which chat has the lock, and a ship that is mid-test is
 the answer.
 
-Skip this step and step 4 if you are already on `main` in the main checkout; commit there and go
-straight to step 5.
+Skip the rebase and step 4 if you are already on `main` in the main checkout — but not the fetch,
+which is the same rule in its degenerate form: `git pull --ff-only` there, resolve nothing because
+nothing can conflict, commit, and go straight to step 5. Skipping it only moves the collision to the
+push, which step 5 then sends back here.
 
 ### 4. Squash all commits into one
 
