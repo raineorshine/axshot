@@ -241,8 +241,9 @@ explained where it is implemented.
   reached from somewhere; only the first is rationed. The candidate list is what every arrow reads —
   `ascend` included — so a cap applied to it rather than to the labels takes regions off the keyboard
   entirely, and a ranking that fills the alphabet with one kind of region empties the list of the
-  other. Which is also what makes the plates worth spending on containers: the bare arrows land on
-  leaves and reach every leaf from any other, so a leaf near the mark is already a keystroke away.
+  other. Kept apart, the ranking is only ever about which regions are convenient to reach first, and
+  it puts the leaves there: a leaf is the smallest box at its spot and naming it is the way in, where
+  a container is one `⌥↑` from anything underneath it.
 - **The bare arrows are the screen; Option is the tree.** Unmodified, each of the four holds the
   nearest leaf that way on screen, preferring one that lines up over one that is merely close. The
   screen is what is being looked at, and the tree's shape says nothing about what sits beside what —
@@ -358,10 +359,9 @@ overlay is legible; the floor only hides small *containers*, text being exempt f
 needs bringing down is `--max-hints`'s to answer rather than the floor's — most of a text-heavy
 window's regions are under the floor and stay there whatever it is set to. `--max-hints` is what
 brings the *plates* down and it drops no regions at all: it defaults to as many as the hint alphabet
-labels in two keystrokes, and hands them to containers first, then leaves, biggest first within each.
-An unlettered region is in the list like any other and every arrow steps to it — which is the whole
-reason the plates can go to the containers: a leaf is what the bare arrows land on, and they reach
-every leaf on screen from any other.
+labels in two keystrokes, and hands them to leaves first, then containers, size descending within
+each. An unlettered region is in the list like any other and every arrow steps to it, so the ranking
+decides what is convenient to reach rather than what is reachable at all.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only

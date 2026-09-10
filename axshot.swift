@@ -47,8 +47,8 @@
 //   --clipboard       put the image on the clipboard and write no file
 //   --min-size <pt>   ignore boxes smaller than this on either side (default 24). Boxes only:
 //                     an element carrying text is offered at whatever size the text was drawn at
-//   --max-hints <n>   letter at most this many regions -- containers first, then leaves, biggest
-//                     first within each. Defaults to as many as the alphabet labels in two
+//   --max-hints <n>   letter at most this many regions -- leaves first, then containers, and size
+//                     descending within each. Defaults to as many as the alphabet labels in two
 //                     keystrokes. It caps the plates and not the regions: what it cannot letter is
 //                     still in the list and still stepped to by every arrow
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
@@ -624,10 +624,11 @@ struct Options {
   /// rather than a cost -- the walk has already happened by the time it is applied -- and it is set
   /// there because that is where a hint stops being one reach of the hand.
   ///
-  /// What it spends itself on is the ranking rather than the number: containers before leaves, and
-  /// the biggest first within each. Nothing is dropped either way -- an unlettered region is in the
-  /// list and stepped to like any other. Setting it explicitly is for reading `--dump`, where a
-  /// third keystroke costs nothing.
+  /// What it spends itself on is the ranking rather than the number: leaves before containers, and
+  /// size descending within each. Nothing is dropped either way -- an unlettered region is in the
+  /// list and stepped to like any other, which is what makes the ranking a question of convenience
+  /// rather than of reach. Setting it explicitly is for reading `--dump`, where a third keystroke
+  /// costs nothing.
   var maxHints: Int?
   var hintChars = "sadfjklewcmpgh"
   var budgetMs = 2000
@@ -1233,12 +1234,12 @@ func filter(_ candidates: [Candidate], windows: [CGRect]) -> [Candidate] {
 /// a held region widens to. A hint is how a region is reached from nothing, and there are only so
 /// many of those a hand wants to type; being reached from somewhere costs no alphabet at all.
 ///
-/// Containers first, then the biggest of what is left. The bare arrows land on leaves and only
-/// leaves, and reach every one of them from any other, so a leaf is already the cheapest region on
-/// screen to get to once a session is anywhere near it -- while a container is reached only by
-/// widening, and a screenshot is very often of the container. So the plates go where the walk does
-/// not. Leaf-ness is asked of the boxes and within one window, the same predicate the overlay steps
-/// by, so the two agree about which regions those are.
+/// Leaves first, then size. A leaf is the smallest box drawn at its spot and so the one a hint is
+/// least replaceable for: what is inside a container can only be named, while a container is one
+/// Option-Up from anything under it. Size second, and only within a group -- a big leaf is worth
+/// more than a small one, but no leaf gives up its plate to a container. Leaf-ness is asked of the
+/// boxes and within one window, the same predicate the overlay steps by, so the two agree about
+/// which regions those are.
 ///
 /// Document order at the end, so the short labels fall to the front window the way they always have.
 func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
@@ -1250,7 +1251,7 @@ func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
     }
   }
   return candidates.indices
-    .sorted { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : !leaf[$0] }
+    .sorted { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : leaf[$0] }
     .prefix(limit)
     .sorted()
 }

@@ -298,11 +298,11 @@ text-heavy window's hints are under the floor — 126 of the 164 on one measured
 `--max-hints` rather than `--min-size` is what a crowded overlay is short of. It defaults to the
 alphabet's own number — as many regions as 14 letters label in two keystrokes, which is 196 — and it
 caps the *plates*, not the regions: nothing is dropped, and what goes unlettered is stepped to by
-every arrow exactly as a lettered region is. Which is what decides who gets one: containers first,
-then leaves, biggest first within each. The bare arrows land on leaves and only leaves and reach
-every one of them from any other, so a leaf near the mark is already a keystroke away; a container is
-reached only by widening onto it. On one desktop measured here, 387 regions came out as 149
-containers and 238 leaves, and the 196 plates went to every container and the 47 biggest leaves.
+every arrow exactly as a lettered region is. Which is what decides who gets one: leaves first, then
+containers, size descending within each. A leaf is the smallest box drawn at its spot, so naming it
+is the only way in to it; a container is one `⌥↑` from anything underneath it whether it was
+lettered or not. On one desktop measured here, 387 regions came out as 238 leaves and 149
+containers, and the 196 plates went to every leaf that fit before any container took one.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
