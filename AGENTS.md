@@ -7,6 +7,12 @@ shell scripts, no dependencies.
 reasoning behind each moving part. Read it before changing behaviour; it is kept current and this
 file does not repeat it.
 
+Current on `origin/main`, that is, which a worktree holds only as of its cut. A tuned constant is
+exactly what another session re-measures and moves, and the README's `--dump` sample ages with it —
+so `git fetch` before quoting a default or a number to the user, not only before shipping. A
+question answered off the worktree is answered as of whenever the worktree was made, and by the time
+the rebase conflicts on it the user has already decided.
+
 ## Guides
 
 - [docs/permissions.md](docs/permissions.md) — what TCC considers "this app", why a grant survives
@@ -343,7 +349,9 @@ Prefer changing the filter's passes over changing `--min-size`. The tree is most
 that repeat their child's box, and the collapse that removes them is what decides whether the
 overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that
 needs bringing down is `--max-hints`'s to answer rather than the floor's — most of a text-heavy
-window's regions are under the floor and stay there whatever it is set to.
+window's regions are under the floor and stay there whatever it is set to — and `--max-hints` is off
+unless a run asks for it, a cap being a trade of the region for the short label rather than a
+default worth carrying.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only
