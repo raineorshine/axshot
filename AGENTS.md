@@ -349,9 +349,12 @@ Prefer changing the filter's passes over changing `--min-size`. The tree is most
 that repeat their child's box, and the collapse that removes them is what decides whether the
 overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that
 needs bringing down is `--max-hints`'s to answer rather than the floor's — most of a text-heavy
-window's regions are under the floor and stay there whatever it is set to — and `--max-hints` is off
-unless a run asks for it, a cap being a trade of the region for the short label rather than a
-default worth carrying.
+window's regions are under the floor and stay there whatever it is set to. `--max-hints` is what
+brings the *plates* down and it drops no regions at all: it defaults to as many as the hint alphabet
+labels in two keystrokes, and hands them to containers first, then leaves, biggest first within each.
+An unlettered region is in the list like any other and every arrow steps to it — which is the whole
+reason the plates can go to the containers: a leaf is what the bare arrows land on, and they reach
+every leaf on screen from any other.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only

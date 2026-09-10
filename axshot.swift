@@ -47,8 +47,10 @@
 //   --clipboard       put the image on the clipboard and write no file
 //   --min-size <pt>   ignore boxes smaller than this on either side (default 24). Boxes only:
 //                     an element carrying text is offered at whatever size the text was drawn at
-//   --max-hints <n>   keep at most this many regions, largest first. No cap by default: it is for
-//                     looking at a page whose collapse has gone wrong, not for making one legible
+//   --max-hints <n>   letter at most this many regions -- containers first, then leaves, biggest
+//                     first within each. Defaults to as many as the alphabet labels in two
+//                     keystrokes. It caps the plates and not the regions: what it cannot letter is
+//                     still in the list and still stepped to by every arrow
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
 //                     enough that two dozen regions are one keystroke each and 196 are two)
 //   --budget-ms <n>   stop walking after this long (default 2000)
@@ -617,16 +619,15 @@ struct Options {
   var pid: pid_t = 0
   var destination = Destination.directory(Settings.saveDirectory)
   var minSize: CGFloat = 24
-  /// A ceiling on the plates drawn, and nil unless a run asks for one. The cap is a legibility
-  /// bound rather than a cost -- the walk has already happened by the time it is applied -- and
-  /// what it takes away is the smallest regions that survived the collapse, which since text
-  /// stopped being held to the size floor is most of what the exemption is for: a word is the
-  /// smallest thing on screen and largest-first drops it first.
+  /// A ceiling on the plates drawn, and nil for the alphabet's own: the number of two-keystroke
+  /// combinations it has, which is 196 for the 14 letters here. The cap is a legibility bound
+  /// rather than a cost -- the walk has already happened by the time it is applied -- and it is set
+  /// there because that is where a hint stops being one reach of the hand.
   ///
-  /// What having none costs is the label. With 14 letters, 196 regions is the most that fit in two
-  /// keystrokes, and the two ordinary windows this was measured against offer 164 and 187 -- so an
-  /// uncapped overlay is two keystrokes on those and three on anything denser. That is the trade a
-  /// run asking for a cap is making: fewer regions, or longer labels on all of them.
+  /// What it spends itself on is the ranking rather than the number: containers before leaves, and
+  /// the biggest first within each. Nothing is dropped either way -- an unlettered region is in the
+  /// list and stepped to like any other. Setting it explicitly is for reading `--dump`, where a
+  /// third keystroke costs nothing.
   var maxHints: Int?
   var hintChars = "sadfjklewcmpgh"
   var budgetMs = 2000
@@ -1196,15 +1197,14 @@ let nestingRatio: CGFloat = 1.5
 /// is the whole window, which is the shot Command-Shift-4 and then Space already takes, and it is
 /// never one element -- the window, its content view and whatever split or group they wrap all
 /// report the same frame -- so dropping it by role would hand the same rectangle to its child, one
-/// letter along. A `limit`, where a run asks for one, is the only thing that is shared, which is
-/// what makes it the cap it says it is; a box in the window behind that a box in the window in
-/// front happens to sit inside is not a repeat of it, and collapsing the two would take away the
-/// region the second window was walked for.
+/// letter along. Within one window and not across two: a box in the window behind that a box in the
+/// window in front happens to sit inside is not a repeat of it, and collapsing the two would take
+/// away the region the second window was walked for. `hinted` asks the same question the same way,
+/// so a container over there is not what makes a box over here unlettered.
 ///
-/// Largest-first spends that cap on the front window without being told to. A window behind is
-/// partly covered by definition, so its boxes are the clipped ones and rank below the whole ones in
-/// front: a crowded desktop cut to twenty hints kept fourteen of them in the front window.
-func filter(_ candidates: [Candidate], max limit: Int?, windows: [CGRect]) -> [Candidate] {
+/// Nothing is cut here. The alphabet's limit is on the plates and `hinted` is what spends it; every
+/// region that survives the collapse is in the list the arrows read, lettered or not.
+func filter(_ candidates: [Candidate], windows: [CGRect]) -> [Candidate] {
   var seen = Set<String>()
   var distinct: [(offset: Int, candidate: Candidate)] = []
   for (offset, candidate) in candidates.enumerated() {
@@ -1224,9 +1224,35 @@ func filter(_ candidates: [Candidate], max limit: Int?, windows: [CGRect]) -> [C
     }
     if swallowed { continue }
     kept.append(entry)
-    if kept.count == limit { break }
   }
   return kept.sorted { $0.offset < $1.offset }.map { $0.candidate }
+}
+
+/// Which of those get a plate, in document order. The cap is on the labels and not on the regions:
+/// what it cannot letter it leaves in the list, still stepped to by every arrow and still the thing
+/// a held region widens to. A hint is how a region is reached from nothing, and there are only so
+/// many of those a hand wants to type; being reached from somewhere costs no alphabet at all.
+///
+/// Containers first, then the biggest of what is left. The bare arrows land on leaves and only
+/// leaves, and reach every one of them from any other, so a leaf is already the cheapest region on
+/// screen to get to once a session is anywhere near it -- while a container is reached only by
+/// widening, and a screenshot is very often of the container. So the plates go where the walk does
+/// not. Leaf-ness is asked of the boxes and within one window, the same predicate the overlay steps
+/// by, so the two agree about which regions those are.
+///
+/// Document order at the end, so the short labels fall to the front window the way they always have.
+func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
+  let leaf = candidates.indices.map { index in
+    let outer = candidates[index].rect.insetBy(dx: -2, dy: -2)
+    return !candidates.contains {
+      $0.window == candidates[index].window && $0.area < candidates[index].area
+        && outer.contains($0.rect)
+    }
+  }
+  return candidates.indices
+    .sorted { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : !leaf[$0] }
+    .prefix(limit)
+    .sorted()
 }
 
 /// Prefix-free labels, as short as the alphabet allows: with 14 letters a page of two dozen regions
@@ -2516,7 +2542,8 @@ final class Session {
     guard let typedCharacter = typedLetter(event) else { return }
 
     let attempt = typed + typedCharacter
-    guard labels.contains(where: { $0.hasPrefix(attempt) }) else { NSSound.beep(); return }
+    // The empty ones are the regions the cap left unlettered, and no keystroke is a prefix of them.
+    guard labels.contains(where: { !$0.isEmpty && $0.hasPrefix(attempt) }) else { NSSound.beep(); return }
     typed = attempt
     if let index = labels.firstIndex(of: typed) {
       descent = []
@@ -3877,12 +3904,20 @@ func runSession(_ options: Options) -> Outcome {
   let walkMs = millis(since: walkStart)
   let visited = walks.reduce(0) { $0 + $1.visited }
   let boxes = walks.reduce(0) { $0 + $1.found.count }
-  let candidates = filter(walks.flatMap { $0.found }, max: options.maxHints, windows: walks.map { $0.box })
-  let labels = hintLabels(count: candidates.count, alphabet: options.hintChars)
+  let candidates = filter(walks.flatMap { $0.found }, windows: walks.map { $0.box })
+  // The default cap is the alphabet's own: as many regions as it labels in two keystrokes, which is
+  // what makes every hint one reach of the hand rather than most of them. It caps the plates and
+  // not the list -- an unlettered region is stepped to like any other.
+  let hintable = options.maxHints ?? options.hintChars.count * options.hintChars.count
+  let plated = hinted(candidates, max: hintable)
+  var labels = [String](repeating: "", count: candidates.count)
+  for (label, index) in zip(hintLabels(count: plated.count, alphabet: options.hintChars), plated) {
+    labels[index] = label
+  }
 
   if options.dump {
     print("windows=\(targets.count) culled=\(culled) unmatched=\(unmatched)")
-    print("visited=\(visited) boxes=\(boxes) candidates=\(candidates.count) walk_ms=\(walkMs)\(walks.contains { $0.timedOut } ? " TIMED OUT" : "")")
+    print("visited=\(visited) boxes=\(boxes) candidates=\(candidates.count) hinted=\(plated.count) walk_ms=\(walkMs)\(walks.contains { $0.timedOut } ? " TIMED OUT" : "")")
     for (index, target) in targets.enumerated() {
       let frame = target.frame
       print("  w\(index) \(name(target)) pid=\(target.app.processIdentifier) (\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))) over=\(target.occluders.count) visited=\(walks[index].visited) boxes=\(walks[index].found.count) walk_ms=\(walks[index].ms)")
@@ -3891,7 +3926,7 @@ func runSession(_ options: Options) -> Outcome {
       let box = candidate.rect
       let subrole = candidate.subrole.isEmpty ? "" : " \(candidate.subrole)"
       let label = candidate.label.isEmpty ? "" : " \"\(candidate.label.prefix(60))\""
-      print("  \(labels[index]) w\(candidate.window) \(candidate.role)\(subrole) depth=\(candidate.depth) (\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height)))\(label)")
+      print("  \(labels[index].isEmpty ? "-" : labels[index]) w\(candidate.window) \(candidate.role)\(subrole) depth=\(candidate.depth) (\(Int(box.minX)),\(Int(box.minY)) \(Int(box.width))x\(Int(box.height)))\(label)")
     }
     return Outcome(code: 0, line: "")
   }
@@ -3919,8 +3954,10 @@ func runSession(_ options: Options) -> Outcome {
   overlay.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
   let view = HintView(frame: CGRect(origin: .zero, size: overlayFrame.size))
-  view.boxes = candidates.enumerated().map { index, candidate in
-    (labels[index], flipY(candidate.rect).offsetBy(dx: -overlayFrame.minX, dy: -overlayFrame.minY))
+  // Only the lettered ones are drawn: a plate is a label and there is nothing to put on one for a
+  // region the alphabet did not reach.
+  view.boxes = plated.map { index in
+    (labels[index], flipY(candidates[index].rect).offsetBy(dx: -overlayFrame.minX, dy: -overlayFrame.minY))
   }
   overlay.contentView = view
   overlay.orderFrontRegardless()

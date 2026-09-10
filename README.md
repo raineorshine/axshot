@@ -273,7 +273,7 @@ grant, and what to do when one is listed but denied.
 `--dump` prints what would be hinted, with the walk cost:
 
     windows=4 culled=22 unmatched=0
-    visited=943 boxes=226 candidates=104 walk_ms=30
+    visited=943 boxes=226 candidates=104 hinted=104 walk_ms=30
       w0 Claude pid=37166 (0,34 735x922) over=0 visited=618 boxes=108 walk_ms=30
       w1 Preview pid=18770 (0,34 850x922) over=1 visited=32 boxes=5 walk_ms=20
       w2 Finder pid=1580 (311,190 848x610) over=3 visited=58 boxes=27 walk_ms=21
@@ -282,8 +282,10 @@ grant, and what to do when one is listed but denied.
       a w0 AXGroup depth=14 (215,34 520x922)
       ...
 
-`boxes` is what survived the visibility filter, `candidates` what survived the nesting collapse.
-Part of the gap between them is each window's own box: a region the size of the window it was found
+`boxes` is what survived the visibility filter, `candidates` what survived the nesting collapse, and
+`hinted` how many of those the alphabet could letter — the regions past that carry a `-` in the
+label column and are stepped to by the arrows like any other. Part of the gap between the first two
+is each window's own box: a region the size of the window it was found
 in is dropped before anything else, so the first hint of a window is the first thing *inside* it —
 here the sidebar, and behind it the pane the window's box had been swallowing. A page that hints the
 same pixels a dozen times over wants `nestingRatio` looked at; one that misses a region wants
@@ -293,10 +295,14 @@ same pixels a dozen times over wants `nestingRatio` looked at; one that misses a
 not words: an element carrying text is offered at whatever size the text was drawn at, so raising the
 floor hides small *containers* and leaves every line of prose where it was. Which is why most of a
 text-heavy window's hints are under the floor — 126 of the 164 on one measured here — and why
-`--max-hints` rather than `--min-size` is what a crowded overlay is short of. It is off by
-default, which trades the label for the region: 14 letters label 196 hints in two keystrokes and
-anything past that in three, and a cap that held the count down would have dropped the smallest —
-which, since the floor stopped measuring words, is the words.
+`--max-hints` rather than `--min-size` is what a crowded overlay is short of. It defaults to the
+alphabet's own number — as many regions as 14 letters label in two keystrokes, which is 196 — and it
+caps the *plates*, not the regions: nothing is dropped, and what goes unlettered is stepped to by
+every arrow exactly as a lettered region is. Which is what decides who gets one: containers first,
+then leaves, biggest first within each. The bare arrows land on leaves and only leaves and reach
+every one of them from any other, so a leaf near the mark is already a keystroke away; a container is
+reached only by widening onto it. On one desktop measured here, 387 regions came out as 149
+containers and 238 leaves, and the 196 plates went to every container and the 47 biggest leaves.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
