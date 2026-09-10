@@ -203,6 +203,15 @@ explained where it is implemented.
   alongside the words a person can read, and no attribute separates them — the same field holds a
   button's visible label and an icon's stand-in name — so the test is whether the text would have
   fitted in its own element. A geometric answer to a question the tree does not answer.
+- **The size floor measures boxes, not words.** A node carrying text is offered at whatever size the
+  text was drawn at. The floor is there to keep the overlay legible against those nested containers,
+  which is a reason to measure a box and no reason at all to hide a word: ordinary body text is under
+  any floor worth setting for a box. Which of the two an element is comes from the same measurement
+  the copy exit makes — a text role is text, anything else counts only where its label would have
+  fitted inside it — so an icon's stand-in name still buys no hint. What that costs is the count,
+  which is `--max-hints`'s to hold and is set to what the hint alphabet labels in two keystrokes
+  rather than to a round number; splitting the cap between boxes and words was weighed and does
+  nothing, the boxes being far too few to crowd the words out.
 - **What the overlay asks about the keyboard, it asks the hardware.** The tap swallows every
   key-down, so `CGEventSource.keyState(.combinedSessionState, …)` reads false for the key it has
   just eaten — the session state is what is left of the stream after the taps have had it.
@@ -332,7 +341,9 @@ reads a sample of its output line by line.
 
 Prefer changing the filter's passes over changing `--min-size`. The tree is mostly nested containers
 that repeat their child's box, and the collapse that removes them is what decides whether the
-overlay is legible; a size floor only hides small things.
+overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that
+needs bringing down is `--max-hints`'s to answer rather than the floor's — most of a text-heavy
+window's regions are under the floor and stay there whatever it is set to.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only

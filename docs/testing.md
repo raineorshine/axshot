@@ -11,6 +11,20 @@ installed app; this is the mechanics it calls for.
 - `axshot --dump` walks and filters and prints, without drawing anything and without touching the
   installed app. This is how the region filter is tuned, it needs no lock, and it is the only path
   that does not touch Screen Recording.
+- **`--dump` is blind to a covered window, in a line that reads like an empty tree.** The window
+  server culls what has no pixels of its own before any accessibility message is sent, so a target
+  sitting behind another window answers `windows=0 culled=1` — the same shape of answer as an app
+  that exposes nothing at all, and neither `--no-prune` nor a longer budget changes it, both being
+  about elements rather than about the window. Raising the window costs the foreground and so costs
+  the lock. Where the question is what the tree *contains* rather than what would be hinted — "why
+  is this link not in the tree" — ask the tree directly instead, in a standalone Swift file that
+  creates an `AXUIElementCreateApplication` for the pid, sets `AXManualAccessibility` on it (Chromium
+  exposes nothing of the page until a client asks), and walks `AXChildren` printing role, frame and
+  label. That needs no bundle, no lock and no visible window: measured from a session shell here, the
+  probe read a fully covered window's tree while `axshot` built loose from the same source answered
+  `trusted=false`. The two are different questions — `AXIsProcessTrustedWithOptions` asks about
+  the calling binary's own identity, and the reads themselves were permitted — so a
+  `trusted=false` is no evidence that a probe from the same shell will come back empty.
 - **A filter change is a diff of the region lists, not of the count.** Dropping one candidate and
   revealing the one it was hiding leaves the count where it was, so `boxes=` and `candidates=` say
   nothing about a change that rewrote what is offered. Dump the branch beside a build of
