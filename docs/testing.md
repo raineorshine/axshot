@@ -25,6 +25,14 @@ installed app; this is the mechanics it calls for.
   `trusted=false`. The two are different questions — `AXIsProcessTrustedWithOptions` asks about
   the calling binary's own identity, and the reads themselves were permitted — so a
   `trusted=false` is no evidence that a probe from the same shell will come back empty.
+- **A live overlay culls the whole desktop, and it is not the driving border that does it.** The
+  overlay is a full-screen window with an ordinary sharing type, and the walk only knows to leave it
+  out of its *own* run — it goes up after that walk has finished. To a second process it is a window
+  covering everything, so a `--dump` typed in a shell while any session is up answers `windows=0`
+  with every window on the machine culled, which reads exactly like a build that has stopped seeing
+  the tree. The border is the one that looks guilty and is not: sharing state 0 keeps it out of the
+  cull, measured either side of a `--driving on`. Take the dump outside the burst, and give an
+  Escape a moment to land before believing the answer after it.
 - **A filter change is a diff of the region lists, not of the count.** Dropping one candidate and
   revealing the one it was hiding leaves the count where it was, so `boxes=` and `candidates=` say
   nothing about a change that rewrote what is offered. Dump the branch beside a build of
