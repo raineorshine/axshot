@@ -360,8 +360,9 @@ needs bringing down is `--max-hints`'s to answer rather than the floor's — mos
 window's regions are under the floor and stay there whatever it is set to. `--max-hints` is what
 brings the *plates* down and it drops no regions at all: it defaults to as many as the hint alphabet
 labels in two keystrokes, and hands them to leaves first, then containers, size descending within
-each. An unlettered region is in the list like any other and every arrow steps to it, so the ranking
-decides what is convenient to reach rather than what is reachable at all.
+each, skipping any region whose corner lands on a plate already placed. An unlettered region is in
+the list like any other and every arrow steps to it, so the ranking decides what is convenient to
+reach rather than what is reachable at all.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only

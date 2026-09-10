@@ -48,9 +48,10 @@
 //   --min-size <pt>   ignore boxes smaller than this on either side (default 24). Boxes only:
 //                     an element carrying text is offered at whatever size the text was drawn at
 //   --max-hints <n>   letter at most this many regions -- leaves first, then containers, and size
-//                     descending within each. Defaults to as many as the alphabet labels in two
-//                     keystrokes. It caps the plates and not the regions: what it cannot letter is
-//                     still in the list and still stepped to by every arrow
+//                     descending within each, passing over anything whose plate would land on one
+//                     already placed. Defaults to as many as the alphabet labels in two keystrokes.
+//                     It caps the plates and not the regions: what it cannot letter is still in the
+//                     list and still stepped to by every arrow
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
 //                     enough that two dozen regions are one keystroke each and 196 are two)
 //   --budget-ms <n>   stop walking after this long (default 2000)
@@ -1185,6 +1186,7 @@ func nearlyEqual(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 4) -> Bool {
 /// two are the same region drawn twice, and the outer one is the better screenshot.
 let nestingRatio: CGFloat = 1.5
 
+
 /// The tree is mostly nested containers that repeat their child's box, and hinting them raw stacks a
 /// dozen hints on the same pixels. Four passes: drop the boxes that are their own window, drop exact
 /// repeats, drop wrappers that say nothing and hold one child, then walk largest-first and drop
@@ -1241,8 +1243,22 @@ func filter(_ candidates: [Candidate], windows: [CGRect]) -> [Candidate] {
 /// boxes and within one window, the same predicate the overlay steps by, so the two agree about
 /// which regions those are.
 ///
+/// No two plates overlap. A plate hangs from its region's top-left corner, so where two corners are
+/// closer than a plate is wide or tall the second would be drawn over the first, and the second is
+/// passed over -- its letter going further down the rank instead. Which is a real limit and not a
+/// tidying: a screen only has so many places a plate can be put once each one has to be clear of
+/// every other, and a page dense enough will run out of them before the alphabet runs out of
+/// labels. Every region is still in the list and still stepped to; what it has lost is the plate.
+///
+/// `plate` is the footprint reserved for each, which is the longest label this many hints could
+/// need rather than the one this region will get -- the label is not picked until the set is. It is
+/// an over-reservation for anything shorter, and the cheap direction to be wrong in.
+///
+/// Across windows, unlike every other pass here: two plates that share pixels share them whichever
+/// trees they came out of, and which window drew them says nothing about whether they can be read.
+///
 /// Document order at the end, so the short labels fall to the front window the way they always have.
-func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
+func hinted(_ candidates: [Candidate], max limit: Int, plate: CGSize) -> [Int] {
   let leaf = candidates.indices.map { index in
     let outer = candidates[index].rect.insetBy(dx: -2, dy: -2)
     return !candidates.contains {
@@ -1250,10 +1266,21 @@ func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
         && outer.contains($0.rect)
     }
   }
-  return candidates.indices
-    .sorted { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : leaf[$0] }
-    .prefix(limit)
-    .sorted()
+  // A plate hangs down and to the right of its region's top-left corner, so where it will be drawn
+  // is that corner and the footprint together.
+  func footprint(_ index: Int) -> CGRect {
+    CGRect(origin: candidates[index].rect.origin, size: plate)
+  }
+  var chosen: [Int] = []
+  for index in candidates.indices
+    .sorted(by: { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : leaf[$0] })
+  {
+    let box = footprint(index)
+    if chosen.contains(where: { footprint($0).intersects(box) }) { continue }
+    chosen.append(index)
+    if chosen.count == limit { break }
+  }
+  return chosen.sorted()
 }
 
 /// Prefix-free labels, as short as the alphabet allows: with 14 letters a page of two dozen regions
@@ -1266,6 +1293,16 @@ func hinted(_ candidates: [Candidate], max limit: Int) -> [Int] {
 /// and the single keystrokes go there. Hinting the whole screen costs the front window some of them
 /// -- seven rather than twelve, on a desktop of four exposed windows -- and costs it none of the
 /// shortest ones.
+/// How many characters the longest of `count` labels runs to, which is what a plate has to have room
+/// for before any of them are handed out.
+func labelWidth(count: Int, alphabet: String) -> Int {
+  let base = max(alphabet.count, 2)
+  var digits = 1
+  var capacity = base
+  while capacity < count { capacity *= base; digits += 1 }
+  return digits
+}
+
 func hintLabels(count: Int, alphabet: String) -> [String] {
   let letters = Array(alphabet)
   let base = letters.count
@@ -1385,6 +1422,16 @@ enum HintStyle: String, CaseIterable {
   func plateSize(_ label: String) -> CGSize {
     let size = plateText(label).size()
     return CGSize(width: size.width + Self.padding * 2, height: size.height + Self.padding * 2)
+  }
+
+  /// The room a plate of this many characters takes, asked before any label exists -- which is what
+  /// decides whether two regions can both have one. The font is monospaced, so a count of characters
+  /// is a width rather than an estimate of one, and the answer is the same whatever the style: the
+  /// plate is a box around a label and the colours do not move its edges.
+  static func footprint(_ characters: Int) -> CGSize {
+    let size = NSAttributedString(string: String(repeating: "M", count: max(characters, 1)),
+                                  attributes: [.font: hintFont]).size()
+    return CGSize(width: size.width + padding * 2, height: size.height + padding * 2)
   }
 
   private func plateText(_ label: String) -> NSAttributedString {
@@ -3910,7 +3957,8 @@ func runSession(_ options: Options) -> Outcome {
   // what makes every hint one reach of the hand rather than most of them. It caps the plates and
   // not the list -- an unlettered region is stepped to like any other.
   let hintable = options.maxHints ?? options.hintChars.count * options.hintChars.count
-  let plated = hinted(candidates, max: hintable)
+  let plated = hinted(candidates, max: hintable,
+                      plate: HintStyle.footprint(labelWidth(count: hintable, alphabet: options.hintChars)))
   var labels = [String](repeating: "", count: candidates.count)
   for (label, index) in zip(hintLabels(count: plated.count, alphabet: options.hintChars), plated) {
     labels[index] = label

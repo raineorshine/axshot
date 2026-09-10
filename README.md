@@ -301,8 +301,15 @@ caps the *plates*, not the regions: nothing is dropped, and what goes unlettered
 every arrow exactly as a lettered region is. Which is what decides who gets one: leaves first, then
 containers, size descending within each. A leaf is the smallest box drawn at its spot, so naming it
 is the only way in to it; a container is one `⌥↑` from anything underneath it whether it was
-lettered or not. On one desktop measured here, 387 regions came out as 238 leaves and 149
-containers, and the 196 plates went to every leaf that fit before any container took one.
+lettered or not.
+
+No two plates overlap, and that rather than the alphabet is usually what ends the list. A plate
+hangs down and to the right of its region's top-left corner and runs about twenty points each way,
+so a region whose corner falls inside a plate already placed is passed over and its letter goes
+further down the rank. It is a screen question rather than a tree one, so it is asked across
+windows, unlike everything else here. On one desktop measured this way, 239 regions took 140 plates
+— 127 leaves and 13 containers — with the nearest two corners 21 points apart; the other 99 regions
+carry no plate and are reached by the arrows, which is the whole of what an unlettered region costs.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
