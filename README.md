@@ -226,9 +226,10 @@ Given arguments, the same binary is a CLI instead of the app. `bin/axshot` links
     bin/axshot --out /tmp/x.png   # capture to an exact path
 
 `axshot.swift`'s header comment is the full reference: every option, and why each part works the way
-it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, with guides on
-[permissions](docs/permissions.md), [testing](docs/testing.md) and
-[accessibility](docs/accessibility.md).
+it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, with guides on the
+[settled decisions](docs/decisions.md), the [region filter](docs/filter.md),
+[accessibility](docs/accessibility.md), [permissions](docs/permissions.md),
+[testing](docs/testing.md) and [working without a Mac](docs/cloud-sessions.md).
 
 ## Permission
 
