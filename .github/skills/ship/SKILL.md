@@ -10,7 +10,9 @@ commit, and push it to `origin/main`. No PR.
 
 **Shipping is asked for, never inferred.** A change that is finished, tested and clean is a change
 ready to ship, not one to ship — say so and stop. Only the user saying to ship, land, merge or push
-it starts this procedure.
+it starts this procedure — or a skill the user invoked whose own procedure ends in one, `learn` and
+`learn-organize` among them. There the ask arrived with the invocation, and stopping to put it again
+is the thing those skills say not to do.
 
 `origin/main` is the source of truth, not the local `main` ref: another session may have pushed
 without the main checkout being able to fast-forward, so local `main` can be behind what you must

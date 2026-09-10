@@ -15,6 +15,10 @@ the rebase conflicts on it the user has already decided.
 
 ## Guides
 
+This file is read in full at the start of every session, so it holds what every session needs and
+stays under 200 lines. Anything situational — read only when working on that area — belongs in a
+guide instead, leaving behind the one-line claim that transfers and the link to it.
+
 - [docs/decisions.md](docs/decisions.md) — what was argued out and measured about the walk, the
   keyboard, the overlay and the workflow. Reopen one only with a reason, not a preference: read it
   before changing behaviour that reads as arbitrary, because most of it is not.
