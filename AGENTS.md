@@ -236,6 +236,13 @@ explained where it is implemented.
   across the screen.
 - **Regions are picked by hint, not named.** Naming would let the walk stop early, but most of what
   is worth capturing carries no label.
+- **What is lettered and what is reachable are two questions.** The alphabet runs out long before
+  the tree does, so a plate is how a region is reached *from nothing* and the arrows are how it is
+  reached from somewhere; only the first is rationed. The candidate list is what every arrow reads —
+  `ascend` included — so a cap applied to it rather than to the labels takes regions off the keyboard
+  entirely, and a ranking that fills the alphabet with one kind of region empties the list of the
+  other. Which is also what makes the plates worth spending on containers: the bare arrows land on
+  leaves and reach every leaf from any other, so a leaf near the mark is already a keystroke away.
 - **The bare arrows are the screen; Option is the tree.** Unmodified, each of the four holds the
   nearest leaf that way on screen, preferring one that lines up over one that is merely close. The
   screen is what is being looked at, and the tree's shape says nothing about what sits beside what —
