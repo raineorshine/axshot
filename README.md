@@ -286,8 +286,14 @@ grant, and what to do when one is listed but denied.
 Part of the gap between them is each window's own box: a region the size of the window it was found
 in is dropped before anything else, so the first hint of a window is the first thing *inside* it —
 here the sidebar, and behind it the pane the window's box had been swallowing. A page that hints the
-same pixels a dozen times over wants `--min-size` or `nestingRatio` looked at; one that misses a
-region wants `--no-prune` tried first.
+same pixels a dozen times over wants `nestingRatio` looked at; one that misses a region wants
+`--no-prune` tried first.
+
+`--min-size` is the other knob and it is a narrower one than it looks, because it measures boxes and
+not words: an element carrying text is offered at whatever size the text was drawn at, so raising the
+floor hides small *containers* and leaves every line of prose where it was. Which is why most of a
+text-heavy window's hints are under the floor — 126 of the 164 on one measured here — and why
+`--max-hints` rather than `--min-size` is what a crowded overlay is short of.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
@@ -303,8 +309,8 @@ On a 735x922 window:
 
 | app        | elements | walk  | boxes | hinted |
 |------------|----------|-------|-------|--------|
-| Claude     | 587      | 26ms  | 91    | 32     |
-| Brave      | 847      | 63ms  | 110   | 64     |
+| Claude     | 375      | 23ms  | 193   | 135    |
+| Brave      | 998      | 72ms  | 188   | 107    |
 
 The walk is far cheaper than a whole-tree read would suggest, for two reasons: every element is read
 in one round trip rather than four, and a subtree whose parent cannot be seen is never entered.

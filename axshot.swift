@@ -45,8 +45,10 @@
 //                     it, which is what makes it the one to tune the filter against
 //   --out <path>      write the PNG to exactly this path instead of a timestamped file
 //   --clipboard       put the image on the clipboard and write no file
-//   --min-size <pt>   ignore boxes smaller than this on either side (default 24)
-//   --max-hints <n>   keep at most this many regions, largest first (default 150)
+//   --min-size <pt>   ignore boxes smaller than this on either side (default 24). Boxes only:
+//                     an element carrying text is offered at whatever size the text was drawn at
+//   --max-hints <n>   keep at most this many regions, largest first (default 196, which is the
+//                     most the default alphabet labels in two keystrokes)
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
 //                     enough that two dozen regions are one keystroke each and 196 are two)
 //   --budget-ms <n>   stop walking after this long (default 2000)
@@ -615,7 +617,13 @@ struct Options {
   var pid: pid_t = 0
   var destination = Destination.directory(Settings.saveDirectory)
   var minSize: CGFloat = 24
-  var maxHints = 150
+  /// The most the default alphabet labels in two keystrokes. The cap is a legibility bound rather
+  /// than a cost -- the walk has already happened by the time it is applied -- so the number to set
+  /// it to is the one where a hint stops being cheap to type, and with 14 letters that is 14 squared.
+  /// Before text was exempt from the size floor an ordinary window offered around 40 regions and any
+  /// cap in this range was slack; now it offers 164 and 187 on the two windows this was measured
+  /// against, which puts the cap in the path of exactly the small runs the exemption is for.
+  var maxHints = 196
   var hintChars = "sadfjklewcmpgh"
   var budgetMs = 2000
   var prune = true
@@ -1037,7 +1045,12 @@ final class Walk {
       let onWindow = frame.intersection(clip)
       let open = onWindow.isNull || onWindow.isEmpty ? [] : exposed(onWindow, under: occluders)
       if let visible = open.max(by: { $0.width * $0.height < $1.width * $1.height }) {
-        if visible.width >= options.minSize && visible.height >= options.minSize {
+        // The floor is about boxes and not about words. It is there to keep the overlay legible --
+        // the tree is mostly containers, and the small ones stack a dozen hints on pixels nobody
+        // was reaching for -- but a run of text is worth capturing at whatever size it was drawn
+        // at, and ordinary body text is under any floor worth setting for a box: the four links
+        // across the top of a page measured 41x13, 43x13, 57x13 and 26x13 points.
+        if carriesText(info, in: visible) || (visible.width >= options.minSize && visible.height >= options.minSize) {
           found.append(Candidate(element: element, role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count, window: window))
         }
       } else if options.prune {
@@ -1072,6 +1085,25 @@ func fits(_ text: String, in frame: CGRect) -> Bool {
   let width = (text as NSString)
     .size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
   return width <= frame.width + 2
+}
+
+/// Whether this element is text rather than a box, and so not something the size floor is about.
+///
+/// Two ways to be text, because the tree answers in two ways. A text role is text by definition and
+/// its value is the run that was rendered, so its box is that run's box however small it is. Any
+/// other element is a control, and a control's name is as likely to stand in for an icon as to be a
+/// label that was drawn -- so it counts as text only where it would have fitted inside the control
+/// at the system's font size. Which is `fits`, the measurement the copy exit already makes and for
+/// the same reason: nothing in the tree marks a name as standing in for a picture, so the only
+/// answer available is whether the words could have been where the element is.
+///
+/// Text a link or a heading wraps needs no case of its own. Web layout draws the run inside its
+/// container, so a small link carries an AXStaticText with the link's own frame; admitting the
+/// child offers the same rectangle, and the dedupe in `filter` keeps whichever of the two the walk
+/// reached first when both pass.
+func carriesText(_ info: Probe, in frame: CGRect) -> Bool {
+  if textRoles.contains(info.role) { return true }
+  return !info.label.isEmpty && fits(info.label, in: frame)
 }
 
 func regionLines(_ element: AXUIElement, clip: CGRect, deadline: Date, path: inout Set<ElementKey>) -> [String] {
