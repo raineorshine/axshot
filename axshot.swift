@@ -47,8 +47,8 @@
 //   --clipboard       put the image on the clipboard and write no file
 //   --min-size <pt>   ignore boxes smaller than this on either side (default 24). Boxes only:
 //                     an element carrying text is offered at whatever size the text was drawn at
-//   --max-hints <n>   keep at most this many regions, largest first (default 196, which is the
-//                     most the default alphabet labels in two keystrokes)
+//   --max-hints <n>   keep at most this many regions, largest first. No cap by default: it is for
+//                     looking at a page whose collapse has gone wrong, not for making one legible
 //   --hint-chars <s>  alphabet for hint labels (default "sadfjklewcmpgh", 14 letters, which is
 //                     enough that two dozen regions are one keystroke each and 196 are two)
 //   --budget-ms <n>   stop walking after this long (default 2000)
@@ -617,13 +617,17 @@ struct Options {
   var pid: pid_t = 0
   var destination = Destination.directory(Settings.saveDirectory)
   var minSize: CGFloat = 24
-  /// The most the default alphabet labels in two keystrokes. The cap is a legibility bound rather
-  /// than a cost -- the walk has already happened by the time it is applied -- so the number to set
-  /// it to is the one where a hint stops being cheap to type, and with 14 letters that is 14 squared.
-  /// Before text was exempt from the size floor an ordinary window offered around 40 regions and any
-  /// cap in this range was slack; now it offers 164 and 187 on the two windows this was measured
-  /// against, which puts the cap in the path of exactly the small runs the exemption is for.
-  var maxHints = 196
+  /// A ceiling on the plates drawn, and nil unless a run asks for one. The cap is a legibility
+  /// bound rather than a cost -- the walk has already happened by the time it is applied -- and
+  /// what it takes away is the smallest regions that survived the collapse, which since text
+  /// stopped being held to the size floor is most of what the exemption is for: a word is the
+  /// smallest thing on screen and largest-first drops it first.
+  ///
+  /// What having none costs is the label. With 14 letters, 196 regions is the most that fit in two
+  /// keystrokes, and the two ordinary windows this was measured against offer 164 and 187 -- so an
+  /// uncapped overlay is two keystrokes on those and three on anything denser. That is the trade a
+  /// run asking for a cap is making: fewer regions, or longer labels on all of them.
+  var maxHints: Int?
   var hintChars = "sadfjklewcmpgh"
   var budgetMs = 2000
   var prune = true
@@ -1192,15 +1196,15 @@ let nestingRatio: CGFloat = 1.5
 /// is the whole window, which is the shot Command-Shift-4 and then Space already takes, and it is
 /// never one element -- the window, its content view and whatever split or group they wrap all
 /// report the same frame -- so dropping it by role would hand the same rectangle to its child, one
-/// letter along. The cap on hints is the only thing that is shared, which is what makes it the cap
-/// it says it is; a box in the window behind that a box in the window in front happens to sit inside
-/// is not a repeat of it, and collapsing the two would take away the region the second window was
-/// walked for.
+/// letter along. A `limit`, where a run asks for one, is the only thing that is shared, which is
+/// what makes it the cap it says it is; a box in the window behind that a box in the window in
+/// front happens to sit inside is not a repeat of it, and collapsing the two would take away the
+/// region the second window was walked for.
 ///
 /// Largest-first spends that cap on the front window without being told to. A window behind is
 /// partly covered by definition, so its boxes are the clipped ones and rank below the whole ones in
 /// front: a crowded desktop cut to twenty hints kept fourteen of them in the front window.
-func filter(_ candidates: [Candidate], max limit: Int, windows: [CGRect]) -> [Candidate] {
+func filter(_ candidates: [Candidate], max limit: Int?, windows: [CGRect]) -> [Candidate] {
   var seen = Set<String>()
   var distinct: [(offset: Int, candidate: Candidate)] = []
   for (offset, candidate) in candidates.enumerated() {

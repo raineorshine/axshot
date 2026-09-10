@@ -293,7 +293,10 @@ same pixels a dozen times over wants `nestingRatio` looked at; one that misses a
 not words: an element carrying text is offered at whatever size the text was drawn at, so raising the
 floor hides small *containers* and leaves every line of prose where it was. Which is why most of a
 text-heavy window's hints are under the floor — 126 of the 164 on one measured here — and why
-`--max-hints` rather than `--min-size` is what a crowded overlay is short of.
+`--max-hints` rather than `--min-size` is what a crowded overlay is short of. It is off by
+default, which trades the label for the region: 14 letters label 196 hints in two keystrokes and
+anything past that in three, and a cap that held the count down would have dropped the smallest —
+which, since the floor stopped measuring words, is the words.
 
 The first line is the window list. `culled` is the windows nothing could be seen of, dropped before
 they were walked; `over` is how many windows are drawn over the one on that line, and a window with a
