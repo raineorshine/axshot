@@ -28,8 +28,8 @@ guide instead, leaving behind the one-line claim that transfers and the link to 
   keyboard, and the AppKit defaults that leave one drawn correctly and reachable by nothing.
 - [docs/permissions.md](docs/permissions.md) — what TCC considers "this app", why a grant survives
   one rebuild and not another, and the three ways granting appears to fail when it has not.
-- [docs/testing.md](docs/testing.md) — driving the app with no human at the keyboard, and the
-  environment failures that look like product bugs.
+- [docs/testing.md](docs/testing.md) — driving the app with no human at the keyboard, running the
+  lock script against a sandbox, and the environment failures that look like product bugs.
 - [docs/cloud-sessions.md](docs/cloud-sessions.md) — what a session with no Mac does with the change
   instead of testing it: the handoff card, and everywhere it has to say the change is untested.
 

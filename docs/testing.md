@@ -652,6 +652,24 @@ through a symlink to it. It needs no lock, no keyboard and no grant of its own, 
 cheap way to see the *before*: the real binary can only be asked one build at a time, and a fix has
 to be taken back out to ask it again.
 
+## Exercising the lock script
+
+The queue and the handoff run end to end without the installed app: point `AXSHOT_ROOT` at a
+scratch directory and `AXSHOT_LIVE` at a stand-in bundle inside it — one with an executable
+`Contents/MacOS/axshot`, since `release` refuses without a snapshot to put back. The copy from
+`origin/main` run beside the edited one is the *before*.
+
+- **Two sandboxed sessions differ in worktree and session id both.** Ownership is the worktree, then
+  the session id when both sides carry one, and every process this session starts inherits
+  `CLAUDE_CODE_HOST_SESSION_ID`. A second "session" from the same checkout or with the same id is the
+  holder, and its `wait` returns at once holding the lock it was meant to queue for. Run each from a
+  directory outside any git checkout, with an id of its own.
+- **`AXSHOT_LIVE` scopes the files, not the processes.** Whether the app is running, and quitting it,
+  go by a process pattern that matches the user's real app wherever the sandbox points. `install`,
+  `break` and a restoring `release` can quit the app they are using and launch the stand-in in its
+  place; `acquire`, `wait`, `status`, `dequeue` and `release --keep` touch no process, and are the
+  ones a sandbox runs.
+
 ## Failures that are the environment, not the code
 
 Each of these cost time in the session that built the tool.
