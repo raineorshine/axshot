@@ -659,11 +659,11 @@ scratch directory and `AXSHOT_LIVE` at a stand-in bundle inside it — one with 
 `Contents/MacOS/axshot`, since `release` refuses without a snapshot to put back. The copy from
 `origin/main` run beside the edited one is the *before*.
 
-- **Two sandboxed sessions differ in worktree and session id both.** Ownership is the worktree, then
-  the session id when both sides carry one, and every process this session starts inherits
-  `CLAUDE_CODE_HOST_SESSION_ID`. A second "session" from the same checkout or with the same id is the
-  holder, and its `wait` returns at once holding the lock it was meant to queue for. Run each from a
-  directory outside any git checkout, with an id of its own.
+- **A second sandboxed session needs a worktree or a session id of its own.** Ownership is the
+  worktree, then the session id when both sides carry one, and every process this session starts
+  inherits `CLAUDE_CODE_HOST_SESSION_ID` — so a second "session" run from the same checkout is the
+  holder, and its `wait` returns at once holding the lock it was meant to queue for. Run each from
+  its own directory outside any git checkout, or give each an id of its own.
 - **`AXSHOT_LIVE` scopes the files, not the processes.** Whether the app is running, and quitting it,
   go by a process pattern that matches the user's real app wherever the sandbox points. `install`,
   `break` and a restoring `release` can quit the app they are using and launch the stand-in in its
