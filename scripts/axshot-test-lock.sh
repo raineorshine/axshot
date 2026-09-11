@@ -61,7 +61,6 @@ WAIT_STALE=${AXSHOT_WAIT_STALE:-1800}
 APP_PROCESS="Axshot.app/Contents/MacOS/axshot"
 
 SELF=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-NOW=$(date +%s)
 # The worktree identifies the owner, but the user's question when a request is
 # denied is "which of my chats is that?" -- so record the session too. The id is
 # in the environment; the human-readable title is not, so the caller passes it.
@@ -70,10 +69,12 @@ SESSION_ID=${CLAUDE_CODE_HOST_SESSION_ID:-${CLAUDE_SESSION_ID:-}}
 die() { printf '%s\n' "$*" >&2; exit 1; }
 field() { cat "$LOCK/$1" 2>/dev/null || printf '(unknown)'; }
 age() {
-  held=$(cat "$LOCK/acquired" 2>/dev/null || printf '%s' "$NOW")
-  # Fresh, not $NOW: a waiting session asks this from a loop it entered hours
-  # ago, and a lock that never appears to age is a lock `break` never reaches.
-  printf '%s' $(( $(date +%s) - held ))
+  # Read fresh, never once at startup: a waiting session asks this from a loop
+  # it entered long ago, and a lock that never appears to age is a lock `break`
+  # never reaches. A lock not yet stamped is being taken right now, so age 0.
+  now=$(date +%s)
+  held=$(cat "$LOCK/acquired" 2>/dev/null || printf '%s' "$now")
+  printf '%s' $(( now - held ))
 }
 holder_report() {
   printf 'held by   %s\n' "$(field label)"
@@ -183,9 +184,12 @@ take_lock() {
   # Who owns it and when it was taken go in before the snapshot, which is the
   # long part of this. A lock interrupted mid-copy is then still one its owner
   # can release and one that ages into `break`'s reach, rather than an
-  # anonymous directory that wedges the queue behind it for good.
+  # anonymous directory that wedges the queue behind it for good. The time is
+  # read here, not when the script started: a `wait` reaches this as much as
+  # $AXSHOT_WAIT_STALE later, and a lock stamped with the start of the wait
+  # would be handed over already stale.
   printf '%s\n' "$SELF" > "$LOCK/worktree"
-  printf '%s\n' "$NOW" > "$LOCK/acquired"
+  printf '%s\n' "$(date +%s)" > "$LOCK/acquired"
   printf '%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '(detached)')" > "$LOCK/branch"
   printf '%s\n' "$1" > "$LOCK/label"
   printf '%s\n' "$2" > "$LOCK/session"
