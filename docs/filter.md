@@ -13,6 +13,14 @@ zero — and still leaves the overlaps a person sees, because it was never measu
 Where a rule is about something drawn, take a picture of the overlay and look at it before believing
 a clean number.
 
+`--dump` lists what was kept, and a missing hint is a question about what was not. `⌘D` on a live
+overlay answers that one: it copies every element the walk reached, with the pass that stopped each
+and the element that pass measured it against — the kept box that swallowed it, the plate already
+where its own would go. It is the record of the walk that drew those hints, so it agrees with the
+screen where a dump taken beside it has walked a tree that moved. A subtree nothing of which is
+visible is one line, its root, with the count of children that were never walked; `--no-prune` is
+still the way to see inside one.
+
 Prefer changing the filter's passes over changing `--min-size`. The tree is mostly nested containers
 that repeat their child's box, and the collapse that removes them is what decides whether the
 overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that

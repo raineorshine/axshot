@@ -421,6 +421,22 @@
 // position rather than the character the layout types there, which is the reading macOS gives the
 // same chord: what is being quoted is a place the hand already knows, not a word.
 //
+// Command-D copies why the hints are where they are, and leaves the session as it was: every element
+// the walk reached, one line each in the order it reached them, ending in what became of it -- off
+// its window, under a window in front, too small, a repeat of a box before it, swallowed by a region
+// too little bigger to be worth a second hint, or kept, and then lettered or not and whose plate was
+// in the way. --dump lists the regions that were kept, and a hint that is missing is a question about
+// one that was not. So every walk keeps that record for as long as its session is up, and the passes
+// that decide say what they decided as they run: an account worked out afterwards would be a second
+// reading of rules that can change without it, and a tree walked again at the press would have moved
+// since the one that drew the letters on screen. A subtree nothing of which can be seen is one line,
+// its root, with the count of children never walked -- those are exactly the elements the pruning
+// saves the walk from reading. What says it was copied is a line at the foot of the display under
+// the pointer, fading after a moment, drawn into the overlay rather than put up as a panel: a panel
+// sits beneath the overlay, and one raised over it would be one more window for every shutter to
+// keep out of the picture. It is the letter the layout types, D being a word here rather than a
+// place.
+//
 // `+` and `-` put a margin around whatever is held, ten points to the press. A box out of the tree
 // is the element and nothing else, which is a tight crop rather than a framed one: a paragraph
 // whose text runs to the edge of its own box is photographed with the words against the edge of the
@@ -985,6 +1001,38 @@ struct Candidate {
   }
 }
 
+/// One element as the walk left it: what it said about itself, and how far it got. `found` holds
+/// only the elements that became boxes, and a hint that never appeared is almost always a question
+/// about one that did not -- so this is kept for every element, for Command-D to account for.
+struct Reached {
+  enum Fate {
+    /// No frame at all, or one with no area: not a box, but walked through, since a child can
+    /// still have one.
+    case noFrame
+    case empty
+    /// Nothing of it on its own window, or all of it under a window in front. Its children are not
+    /// walked unless pruning is off.
+    case outside
+    case covered
+    /// What can be seen of it is under the size floor, and it is not text.
+    case small
+    /// Handed to the filter, and whether it counts as text and so owes the floor nothing.
+    case box(text: Bool)
+    /// Its own ancestor, or past the deepest the walk goes: never read.
+    case cycle
+    case deep
+  }
+  var depth: Int
+  var role = ""
+  var subrole = ""
+  var label = ""
+  var frame: CGRect?
+  /// The part of the frame a capture could photograph, wherever the walk got as far as asking.
+  var visible: CGRect?
+  var children = 0
+  var fate: Fate
+}
+
 final class Walk {
   let clip: CGRect
   /// The windows drawn over this one, in the same coordinates as `clip`.
@@ -999,6 +1047,9 @@ final class Walk {
   var timedOut = false
   var path = Set<ElementKey>()
   var found: [Candidate] = []
+  /// Every element the walk reached, in the order it reached them, whether or not it became a box.
+  /// The `box` fates are in step with `found`: the nth of them is `found[n]`.
+  var reached: [Reached] = []
   /// How long this window's walk took on its own. With the windows walked at once these overlap, so
   /// the dump adding up to more than its own total is the concurrency being visible rather than an
   /// arithmetic error.
@@ -1030,11 +1081,12 @@ final class Walk {
   /// Pre-order, so an outer box is recorded before the inner boxes that repeat it and the dedupe
   /// below keeps the outer one.
   func run(_ element: AXUIElement, depth: Int = 0) {
-    if timedOut || depth > maxDepth { return }
+    if timedOut { return }
+    if depth > maxDepth { reached.append(Reached(depth: depth, fate: .deep)); return }
     // The tree is not always a tree: a child can lead back to an ancestor, and following it walks
     // until the stack gives out. Keep the ancestor path and refuse to re-enter it.
     let key = ElementKey(element: element)
-    if path.contains(key) { return }
+    if path.contains(key) { reached.append(Reached(depth: depth, fate: .cycle)); return }
     path.insert(key)
     defer { path.remove(key) }
 
@@ -1042,6 +1094,11 @@ final class Walk {
     if visited % 64 == 0, Date() > deadline { timedOut = true; return }
 
     let info = probe(element)
+    // Recorded ahead of the children on every path below, so the record is in the walk's own
+    // pre-order and an element's descendants are the run of deeper entries after it.
+    var node = Reached(depth: depth, role: info.role, subrole: info.subrole, label: info.label,
+                       frame: info.frame, children: info.children.count,
+                       fate: info.frame == nil ? .noFrame : .empty)
     if let frame = info.frame, !frame.isEmpty {
       // What of this element could be photographed: the part inside its own window, less whatever a
       // window in front is drawn over. One rule twice -- a box is worth hinting only where the
@@ -1052,21 +1109,31 @@ final class Walk {
       let onWindow = frame.intersection(clip)
       let open = onWindow.isNull || onWindow.isEmpty ? [] : exposed(onWindow, under: occluders)
       if let visible = open.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+        node.visible = visible
         // The floor is about boxes and not about words. It is there to keep the overlay legible --
         // the tree is mostly containers, and the small ones stack a dozen hints on pixels nobody
         // was reaching for -- but a run of text is worth capturing at whatever size it was drawn
         // at, and ordinary body text is under any floor worth setting for a box: the four links
         // across the top of a page measured 41x13, 43x13, 57x13 and 26x13 points.
-        if carriesText(info, in: visible) || (visible.width >= options.minSize && visible.height >= options.minSize) {
+        let text = carriesText(info, in: visible)
+        if text || (visible.width >= options.minSize && visible.height >= options.minSize) {
           found.append(Candidate(element: element, role: info.role, subrole: info.subrole, label: info.label, rect: visible, depth: depth, childCount: info.children.count, window: window))
+          node.fate = .box(text: text)
+        } else {
+          node.fate = .small
         }
-      } else if options.prune {
-        // Nothing of this element can be seen at all -- off the screen, or under another window.
-        // Its children are laid out inside it, so neither can anything below it, and not entering
-        // the subtree is what keeps a long conversation walkable and a covered window unwalked.
-        return
+      } else {
+        node.fate = onWindow.isNull || onWindow.isEmpty ? .outside : .covered
+        if options.prune {
+          // Nothing of this element can be seen at all -- off the screen, or under another window.
+          // Its children are laid out inside it, so neither can anything below it, and not entering
+          // the subtree is what keeps a long conversation walkable and a covered window unwalked.
+          reached.append(node)
+          return
+        }
       }
     }
+    reached.append(node)
 
     for child in info.children { run(child, depth: depth + 1) }
   }
@@ -1207,28 +1274,57 @@ let nestingRatio: CGFloat = 1.5
 ///
 /// Nothing is cut here. The alphabet's limit is on the plates and `hinted` is what spends it; every
 /// region that survives the collapse is in the list the arrows read, lettered or not.
-func filter(_ candidates: [Candidate], windows: [CGRect]) -> [Candidate] {
-  var seen = Set<String>()
+///
+/// Every box also comes back with what the passes made of it, for Command-D -- said by those passes
+/// as they run rather than worked out again afterwards, which is the only way an account of a hint
+/// cannot come to disagree with the hint.
+func filter(_ candidates: [Candidate], windows: [CGRect]) -> (kept: [Candidate], fates: [Collapse]) {
+  // Each box is given its fate by exactly one of the passes below; this is only what the list holds
+  // before they have run.
+  var fates = [Collapse](repeating: .window, count: candidates.count)
+  var seen: [String: Int] = [:]
   var distinct: [(offset: Int, candidate: Candidate)] = []
   for (offset, candidate) in candidates.enumerated() {
-    if nearlyEqual(candidate.rect, windows[candidate.window]) { continue }
-    if candidate.generic && candidate.childCount <= 1 { continue }
-    if !seen.insert("\(candidate.window):\(gridKey(candidate.rect))").inserted { continue }
-    if distinct.contains(where: { $0.candidate.window == candidate.window && nearlyEqual($0.candidate.rect, candidate.rect) }) { continue }
+    if nearlyEqual(candidate.rect, windows[candidate.window]) { fates[offset] = .window; continue }
+    if candidate.generic && candidate.childCount <= 1 { fates[offset] = .wrapper; continue }
+    let key = "\(candidate.window):\(gridKey(candidate.rect))"
+    if let first = seen[key] { fates[offset] = .repeats(first); continue }
+    seen[key] = offset
+    if let twin = distinct.first(where: { $0.candidate.window == candidate.window && nearlyEqual($0.candidate.rect, candidate.rect) }) {
+      fates[offset] = .repeats(twin.offset)
+      continue
+    }
     distinct.append((offset, candidate))
   }
 
   var kept: [(offset: Int, candidate: Candidate)] = []
   for entry in distinct.sorted(by: { $0.candidate.area > $1.candidate.area }) {
-    let swallowed = kept.contains { outer in
+    let container = kept.first { outer in
       outer.candidate.window == entry.candidate.window
         && outer.candidate.rect.insetBy(dx: -2, dy: -2).contains(entry.candidate.rect)
         && outer.candidate.area < entry.candidate.area * nestingRatio
     }
-    if swallowed { continue }
+    if let container { fates[entry.offset] = .inside(container.offset); continue }
     kept.append(entry)
   }
-  return kept.sorted { $0.offset < $1.offset }.map { $0.candidate }
+  let ordered = kept.sorted { $0.offset < $1.offset }
+  for (index, entry) in ordered.enumerated() { fates[entry.offset] = .kept(index) }
+  return (ordered.map { $0.candidate }, fates)
+}
+
+/// What the collapse made of one box: the candidate it became, or the pass that let it go -- and,
+/// for the passes that measure one box against another, which one, as its place in the same list.
+enum Collapse {
+  /// Its place in the candidate list.
+  case kept(Int)
+  /// The size of its own window, which is the window rather than a region of it.
+  case window
+  /// A container that says nothing about itself and holds at most one child.
+  case wrapper
+  /// The same box as an earlier one, to the 2pt grid or within 4 points of it.
+  case repeats(Int)
+  /// Inside a kept box too little bigger than it to be worth a second hint.
+  case inside(Int)
 }
 
 /// Which of those get a plate, in document order. The cap is on the labels and not on the regions:
@@ -1258,7 +1354,10 @@ func filter(_ candidates: [Candidate], windows: [CGRect]) -> [Candidate] {
 /// trees they came out of, and which window drew them says nothing about whether they can be read.
 ///
 /// Document order at the end, so the short labels fall to the front window the way they always have.
-func hinted(_ candidates: [Candidate], max limit: Int, plate: CGSize) -> [Int] {
+///
+/// What it made of every candidate comes back beside the plates, with the ranking it made it by, for
+/// Command-D to say why a region carries no letter.
+func hinted(_ candidates: [Candidate], max limit: Int, plate: CGSize) -> (chosen: [Int], leaf: [Bool], fates: [Plating]) {
   let leaf = candidates.indices.map { index in
     let outer = candidates[index].rect.insetBy(dx: -2, dy: -2)
     return !candidates.contains {
@@ -1271,16 +1370,30 @@ func hinted(_ candidates: [Candidate], max limit: Int, plate: CGSize) -> [Int] {
   func footprint(_ index: Int) -> CGRect {
     CGRect(origin: candidates[index].rect.origin, size: plate)
   }
+  // Whatever the loop has not reached when the cap stops it is what the cap left without a turn.
+  var fates = [Plating](repeating: .capped, count: candidates.count)
   var chosen: [Int] = []
   for index in candidates.indices
     .sorted(by: { leaf[$0] == leaf[$1] ? candidates[$0].area > candidates[$1].area : leaf[$0] })
   {
     let box = footprint(index)
-    if chosen.contains(where: { footprint($0).intersects(box) }) { continue }
+    if let taken = chosen.first(where: { footprint($0).intersects(box) }) {
+      fates[index] = .overlaps(taken)
+      continue
+    }
     chosen.append(index)
+    fates[index] = .lettered
     if chosen.count == limit { break }
   }
-  return chosen.sorted()
+  return (chosen.sorted(), leaf, fates)
+}
+
+/// What `hinted` made of one candidate: a plate, or the lettered candidate whose plate is already
+/// where its own would have been drawn, or no turn at all before the cap was spent.
+enum Plating {
+  case lettered
+  case overlaps(Int)
+  case capped
 }
 
 /// Prefix-free labels, as short as the alphabet allows: with 14 letters a page of two dozen regions
@@ -1539,6 +1652,11 @@ final class HintView: NSView {
   /// anything in here.
   var pointer: CGPoint?
   var pointerLabel: String?
+  /// What Command-D just copied, said in one line centred on `centre`, and how far it has faded. It is
+  /// drawn into the overlay rather than put up as a panel of its own: a panel sits beneath the
+  /// overlay's level, and one raised above it would be one more window for every shutter to keep out
+  /// of its picture.
+  var toast: (text: String, centre: CGPoint, level: CGFloat)?
   override var isFlipped: Bool { false }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -1553,6 +1671,9 @@ final class HintView: NSView {
     // being read rather than a screen being pointed at. `hidesPointer` is the second of those for
     // the shot that keeps everything else -- the crosshair is a cursor, and no screenshot takes one.
     if !bare && !help && !hidesPointer { drawPointer() }
+    // Not into the transcription's picture, which is of whatever region the line might be drawn
+    // over. The overlay's own shot keeps it, as that shot keeps everything else the overlay says.
+    if !bare { drawToast() }
     // Never over a shutter. Nothing can fire one while the sheet is up -- every other key is
     // swallowed -- but the sheet is the one thing on the overlay large enough that drawing it into
     // a photograph would go unnoticed until someone opened the file.
@@ -1650,6 +1771,39 @@ final class HintView: NSView {
     let cross = CGRect(x: pointer.x - Self.crossReach, y: pointer.y - Self.crossReach,
                        width: Self.crossReach * 2, height: Self.crossReach * 2)
     return (pointerPlate.map { cross.union($0) } ?? cross).insetBy(dx: -3, dy: -3)
+  }
+
+  private static let toastFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+
+  /// The pill the toast sits on, in this view's coordinates -- in one place for the reason the
+  /// readout's plate is, since what is drawn and what is marked dirty around it have to agree.
+  var toastPlate: CGRect? {
+    guard let toast else { return nil }
+    let size = NSAttributedString(string: toast.text, attributes: [.font: Self.toastFont]).size()
+    let width = ceil(size.width) + 28
+    let height = ceil(size.height) + 12
+    return CGRect(x: (toast.centre.x - width / 2).rounded(), y: (toast.centre.y - height / 2).rounded(),
+                  width: width, height: height)
+  }
+
+  private func drawToast() {
+    guard let toast, let plate = toastPlate else { return }
+    // Stated outright, like the readout it matches: it is drawn over another app's window, and a
+    // pill that went light with the desktop would disappear into half of them.
+    let pill = NSBezierPath(roundedRect: plate.insetBy(dx: 0.5, dy: 0.5),
+                            xRadius: plate.height / 2 - 0.5, yRadius: plate.height / 2 - 0.5)
+    NSColor(calibratedWhite: 0.08, alpha: 0.9 * toast.level).setFill()
+    pill.fill()
+    // A light edge, for the reason the thumbnail's mat has one: over a dark window the fill alone
+    // dissolves into what is underneath and leaves the words floating.
+    NSColor(calibratedWhite: 1, alpha: 0.25 * toast.level).setStroke()
+    pill.lineWidth = 1
+    pill.stroke()
+    let run = NSAttributedString(string: toast.text, attributes: [
+      .font: Self.toastFont, .foregroundColor: NSColor(calibratedWhite: 1, alpha: toast.level),
+    ])
+    let size = run.size()
+    run.draw(at: CGPoint(x: plate.midX - size.width / 2, y: plate.midY - size.height / 2))
   }
 
   private func drawRegions() {
@@ -2044,6 +2198,7 @@ enum HelpSheet {
         ("\u{2318},", "settings"),
         ("\u{2318}\u{21E7}3", "screenshot the overlay, hints and all"),
         ("\u{2318}\u{2303}\u{21E7}3", "that same picture, on the clipboard"),
+        ("\u{2318}D", "copy debug info on every hint"),
         ("?", "keyboard shortcuts (you are here)"),
       ]),
     ]
@@ -2359,6 +2514,12 @@ final class Session {
   /// A confirmation step the run loop could not have known to wait for; it restarts the deadline.
   var deadline: Date?
   var view: HintView!
+  /// How this session came to be lettered the way it is -- every element the walks reached, and what
+  /// the collapse and the plates made of it -- for Command-D. Set before the overlay goes up and
+  /// never changed after.
+  var trace: Trace?
+  /// Takes down the line Command-D puts up, and is stopped on every path out.
+  private var toasting: Timer?
   /// The windows that were walked, front to back. A dragged region has no element of its own, so it
   /// takes the tree of the window it landed in and lets the clip do the selecting -- which is what
   /// `regionText` was already doing with every candidate it was handed. With more than one window
@@ -2454,6 +2615,13 @@ final class Session {
         settings = true
         cancelled = true
         CFRunLoopStop(CFRunLoopGetCurrent())
+        return
+      }
+      // The debug dump, held region or not, and the session carries on: what it copies is how every
+      // hint on screen came to be there or not, and the question it answers is asked with them still
+      // up. The letter the layout types, as Shift-J is, since D is a word here and not a place.
+      if typedLetter(event) == "d", carbonModifiers(event.flags) == UInt32(cmdKey) {
+        dumpDebug()
         return
       }
       // The system's own two screenshot chords, borrowed for the one shot the overlay is in:
@@ -3558,6 +3726,199 @@ func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, cont
   return nil
 }
 
+// MARK: - Debug dump
+
+/// Everything one session found out on its way to the hints, kept for Command-D: the windows it
+/// walked, every element each walk reached, and what the collapse and the plates made of whatever
+/// survived. The walks are held rather than copied out of, nothing touching one once it has finished.
+struct Trace {
+  let options: Options
+  /// The plates the alphabet was allowed, and the room reserved for each.
+  let cap: Int
+  let plate: CGSize
+  let targets: [WindowTarget]
+  let walks: [Walk]
+  let culled: Int
+  let unmatched: Int
+  let walkMs: Int
+  /// One per box, in the order the walks found them, window after window.
+  let collapse: [Collapse]
+  /// One per candidate.
+  let leaf: [Bool]
+  let plating: [Plating]
+}
+
+extension Session {
+  /// How long the line stays up to be read, and how long it takes to go.
+  static let toastLinger = 1.5
+  static let toastFadeMs = 250.0
+
+  /// Copy the trace and say so, leaving everything else as it was: the hints, whatever is held, and
+  /// the text box if one is open. A key the run loop could not have known to wait for, so it
+  /// restarts the deadline the way a hold does -- except under a transcription, whose deadline is
+  /// the longer one and not this key's to cut short.
+  func dumpDebug() {
+    let report = debugReport()
+    guard let trace, !report.isEmpty else { NSSound.beep(); return }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(report, forType: .string)
+    let elements = trace.walks.reduce(0) { $0 + $1.reached.count }
+    let message = "Copied debug info: \(elements) elements, \(labels.filter { !$0.isEmpty }.count) hints"
+    showToast(message)
+    // The line is a picture of words, and the app never has the focus to say anything through.
+    NSAccessibility.post(
+      element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message])
+    if request == nil { deadline = Date().addingTimeInterval(30) }
+  }
+
+  /// The trace as text compact enough to paste: a legend, the options and windows the walk ran under,
+  /// and then one line per element in the order the walk reached them, each ending in what became of
+  /// it -- the walk's verdict, then the collapse's, then for a kept region its plate. Every line
+  /// starts with an id, and every verdict that blames another element names it by that id, so the
+  /// element responsible is one search away.
+  func debugReport() -> String {
+    guard let trace else { return "" }
+    // Frames are whatever the app says they are, infinities and NaN included, and an Int made of
+    // either is a crash.
+    func number(_ value: CGFloat) -> String {
+      value.isFinite && abs(value) < 1e9 ? String(Int(value)) : "\(value)"
+    }
+    func box(_ rect: CGRect) -> String {
+      rect.isNull ? "(null)"
+        : "(\(number(rect.minX)),\(number(rect.minY)) \(number(rect.width))x\(number(rect.height)))"
+    }
+    func bare(_ name: String) -> String { name.hasPrefix("AX") ? String(name.dropFirst(2)) : name }
+
+    // Which line each box and each candidate is, so a verdict can name the element it blames by the
+    // id that element's own line starts with.
+    var boxNode: [Int] = []
+    var first = 0
+    for walk in trace.walks {
+      for (index, node) in walk.reached.enumerated() {
+        if case .box = node.fate { boxNode.append(first + index) }
+      }
+      first += walk.reached.count
+    }
+    // In step by construction -- the walk records the fate where it appends the box -- and checked
+    // anyway, since the price of being wrong about it is the app.
+    guard boxNode.count == trace.collapse.count else { return "" }
+    var candidateNode = [Int](repeating: 0, count: candidates.count)
+    for (index, fate) in trace.collapse.enumerated() {
+      if case .kept(let candidate) = fate { candidateNode[candidate] = boxNode[index] }
+    }
+
+    let stamp = DateFormatter()
+    stamp.locale = Locale(identifier: "en_US_POSIX")
+    stamp.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    let options = trace.options
+    let hinted = labels.filter { !$0.isEmpty }.count
+    var lines = [
+      "axshot debug \(stamp.string(from: Date()))",
+      "# Every element the walk reached, in walk order: n<id> d<depth> Role/Subrole (x,y wxh) \"label\" c<children>, then its fate.",
+      "# Frames are global top-left points, as --dump prints them; roles drop their AX; vis= is the part that could be photographed, where it differs; text means exempt from min_size.",
+      "# Not a box: noframe, empty, small (visible part under min_size), outside (off its window), covered (under windows in front), cycle (its own ancestor), deep (past the depth limit). Children of outside and covered are not walked while prune=true.",
+      "# A box the collapse dropped: window (its window's own box), wrapper (generic, at most one child), same=n (repeats that box), inside=n (inside that kept box, which is under 1.5x its area).",
+      "# A box kept: leaf or container (plates go to leaves first, then by size), then hint=<label>, overlap=n (its plate would land on that one's), or capped (max_hints spent before its turn).",
+      "options min_size=\(String(format: "%g", Double(options.minSize))) max_hints=\(trace.cap) hint_chars=\(options.hintChars) plate=\(number(trace.plate.width))x\(number(trace.plate.height)) prune=\(options.prune) enhanced=\(options.enhanced) focused=\(options.focused) budget_ms=\(options.budgetMs)",
+      "screens=" + screens.map { box($0.frame) }.joined(separator: ","),
+      "windows=\(trace.targets.count) culled=\(trace.culled) unmatched=\(trace.unmatched) visited=\(trace.walks.reduce(0) { $0 + $1.visited }) boxes=\(trace.collapse.count) candidates=\(candidates.count) hinted=\(hinted) walk_ms=\(trace.walkMs)\(trace.walks.contains { $0.timedOut } ? " TIMED OUT" : "")",
+    ]
+
+    // What is on screen now, which is what the question is being asked about: the letters typed so
+    // far, and what is held -- by id where it came out of the tree, by rectangle where it did not.
+    let held = chain.map { entry in entry.index.map { "n\(candidateNode[$0])" } ?? "custom" + box(entry.region.rect) }
+    var state = "state typed=\"\(typed)\" held=\(held.isEmpty ? "none" : held.joined(separator: ","))"
+    if let rect = heldRect { state += " shot=" + box(framed(rect)) }
+    if margin > 0 { state += " margin=\(number(margin))" }
+    lines.append(state + " pointer=(\(number(pointer.x.rounded())),\(number(pointer.y.rounded())))")
+
+    var id = 0
+    var boxIndex = 0
+    for (window, walk) in trace.walks.enumerated() {
+      let target = trace.targets[window]
+      lines.append("w\(window) \(target.app.localizedName ?? target.app.bundleIdentifier ?? "?") pid=\(target.app.processIdentifier) \(box(target.frame)) box=\(box(walk.box)) over=\(target.occluders.count) visited=\(walk.visited) boxes=\(walk.found.count) walk_ms=\(walk.ms)\(walk.timedOut ? " TIMED OUT" : "")")
+      for node in walk.reached {
+        var line = "n\(id) d\(node.depth)"
+        let kind = bare(node.role) + (node.subrole.isEmpty ? "" : "/" + bare(node.subrole))
+        if !kind.isEmpty { line += " " + kind }
+        if let frame = node.frame { line += " " + box(frame) }
+        if !node.label.isEmpty {
+          let shown = String(node.label.prefix(40).map { $0.isNewline || $0 == "\t" ? " " : $0 })
+          line += " \"\(shown)\(node.label.count > 40 ? "..." : "")\""
+        }
+        if node.children > 0 { line += " c\(node.children)" }
+        if let visible = node.visible, let frame = node.frame, box(visible) != box(frame) {
+          line += " vis=" + box(visible)
+        }
+        switch node.fate {
+        case .noFrame: line += " noframe"
+        case .empty: line += " empty"
+        case .outside: line += " outside"
+        case .covered: line += " covered"
+        case .small: line += " small"
+        case .cycle: line += " cycle"
+        case .deep: line += " deep"
+        case .box(let text):
+          if text { line += " text" }
+          switch trace.collapse[boxIndex] {
+          case .window: line += " window"
+          case .wrapper: line += " wrapper"
+          case .repeats(let other): line += " same=n\(boxNode[other])"
+          case .inside(let outer): line += " inside=n\(boxNode[outer])"
+          case .kept(let index):
+            line += trace.leaf[index] ? " kept leaf" : " kept container"
+            switch trace.plating[index] {
+            case .lettered: line += " hint=\(labels[index])"
+            case .overlaps(let other): line += " overlap=n\(candidateNode[other])"
+            case .capped: line += " capped"
+            }
+          }
+          boxIndex += 1
+        }
+        lines.append(line)
+        id += 1
+      }
+    }
+    return lines.joined(separator: "\n") + "\n"
+  }
+
+  /// Put a line at the foot of the display under the pointer, and take it down on its own: left up
+  /// long enough to read, then faded rather than cut, the way the mask leaves. That display because
+  /// the crosshair is on it, which is the one thing on screen saying where the eye is.
+  func showToast(_ text: String) {
+    stopToast()
+    guard let screen = screens.first(where: { $0.frame.contains(pointer) }) ?? screens.first else { return }
+    // High enough to clear a Dock along the bottom edge, which the overlay would otherwise draw over.
+    view.toast = (text, viewPoint(CGPoint(x: screen.frame.midX, y: screen.frame.maxY - 120)), 1)
+    markToast()
+    toasting = Timer.scheduledTimer(withTimeInterval: Self.toastLinger, repeats: false) { [weak self] _ in
+      guard let self else { return }
+      let start = Date()
+      self.toasting = Timer.scheduledTimer(withTimeInterval: 1 / 60, repeats: true) { [weak self] timer in
+        guard let self else { timer.invalidate(); return }
+        let level = 1 - CGFloat(Date().timeIntervalSince(start) / (Self.toastFadeMs / 1000))
+        self.markToast()
+        if level <= 0 { self.stopToast() } else { self.view.toast?.level = level }
+      }
+    }
+  }
+
+  /// Take it down at once: on the way out of a session, and when a second Command-D replaces it.
+  func stopToast() {
+    toasting?.invalidate()
+    toasting = nil
+    markToast()
+    view.toast = nil
+  }
+
+  /// Only the pill is redrawn, the way the readout marks only its own plate: a fade is a quarter of a
+  /// second of frames, and each of them repainting every hint on the display is the one way this
+  /// could stutter.
+  private func markToast() {
+    if let plate = view.toastPlate { view.setNeedsDisplay(plate.insetBy(dx: -2, dy: -2)) }
+  }
+}
+
 // MARK: - Capture
 
 /// Where a capture goes. Decided at the end of a hold rather than at the hotkey: Return files it,
@@ -3952,13 +4313,13 @@ func runSession(_ options: Options) -> Outcome {
   let walkMs = millis(since: walkStart)
   let visited = walks.reduce(0) { $0 + $1.visited }
   let boxes = walks.reduce(0) { $0 + $1.found.count }
-  let candidates = filter(walks.flatMap { $0.found }, windows: walks.map { $0.box })
+  let (candidates, collapse) = filter(walks.flatMap { $0.found }, windows: walks.map { $0.box })
   // The default cap is the alphabet's own: as many regions as it labels in two keystrokes, which is
   // what makes every hint one reach of the hand rather than most of them. It caps the plates and
   // not the list -- an unlettered region is stepped to like any other.
   let hintable = options.maxHints ?? options.hintChars.count * options.hintChars.count
-  let plated = hinted(candidates, max: hintable,
-                      plate: HintStyle.footprint(labelWidth(count: hintable, alphabet: options.hintChars)))
+  let plate = HintStyle.footprint(labelWidth(count: hintable, alphabet: options.hintChars))
+  let (plated, leaves, plating) = hinted(candidates, max: hintable, plate: plate)
   var labels = [String](repeating: "", count: candidates.count)
   for (label, index) in zip(hintLabels(count: plated.count, alphabet: options.hintChars), plated) {
     labels[index] = label
@@ -4025,6 +4386,9 @@ func runSession(_ options: Options) -> Outcome {
   session.screens = screens.map { (flipY($0.frame), $0.frame.maxY - $0.visibleFrame.maxY) }
   session.flipBase = flipBase
   session.overlayOrigin = overlayFrame.origin
+  session.trace = Trace(options: options, cap: hintable, plate: plate, targets: targets, walks: walks,
+                        culled: culled, unmatched: unmatched, walkMs: walkMs,
+                        collapse: collapse, leaf: leaves, plating: plating)
   Session.shared = session
   // Where the pointer already is. The session is opened by a keystroke, so a hand that never
   // touches the mouse would otherwise be given a crosshair with nothing beside it until it did.
@@ -4083,6 +4447,7 @@ func runSession(_ options: Options) -> Outcome {
   if session.chosen == nil && session.windowShot == nil { session.fadeOutMask() }
   session.stopFade()
   session.stopWave()
+  session.stopToast()
   overlay.orderOut(nil)
 
   if let windowShot {

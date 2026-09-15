@@ -95,6 +95,15 @@ system's own chord underneath exactly the key that cannot reach it. The crosshai
 a cursor and no more in this shot than in any other, and the menu bar strip goes the way `⌘⌥←` drops
 it.
 
+`⌘D` copies why the hints are where they are, and leaves the session up: every element the walk
+reached, one line each, with what became of it — off its window, under another one, too small, the
+same box as an element before it, swallowed by a region barely bigger than it, or kept, and then
+lettered or not and whose plate was in the way. `--dump` lists the regions that were kept, and a
+missing hint is a question about one that was not. It comes from the walk that drew the hints on
+screen rather than from a second one, since a tree walked twice has moved in between, and a line at
+the foot of the display under the pointer says it was copied. The text starts with a legend for its
+own format.
+
 A hold has three ways out, so where a shot lands is decided with the region on screen rather than
 back at the hotkey, and two keys that put the region's words on screen first:
 
