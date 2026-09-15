@@ -248,8 +248,14 @@ Release first, then follow the `ship` skill.
   planning around it — `osascript -e 'clipboard info'` names the classes and touches nothing. Plain
   text is the case `pbpaste` before and `pbcopy` after puts back. Anything else is not: a copied
   image arrives in a dozen flavours at once and nothing on the command line writes them all back, so
-  the clipboard paths are untestable until the user has moved on. That is a result to report as
-  untested, not a reading that licenses overwriting what it just named.
+  no build that writes the clipboard can be driven until the user has moved on. Everything short of
+  the write still can: a scratch copy of the source with the pasteboard call redirected to a file,
+  signed into a bundle the way the comparison build in
+  [docs/testing.md](../../../docs/testing.md#the-paths-that-need-no-interaction) is and put in the
+  live slot with `axshot-test-lock.sh install <bundle>` under the held lock, drives the key, the
+  session and anything the path draws, and `./build.sh` puts the real build back for the hand-off.
+  The write itself is the result to report as untested, not a reading that licenses overwriting what
+  `clipboard info` just named.
 - **A capture takes whatever is frontmost.** Activate the app you mean — before every run, not once
   per test — or you will measure the wrong window and conclude the filter is broken.
 - **Some paths spend the user's money.** The transcription key sends a picture to the Claude API on

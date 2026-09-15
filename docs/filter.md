@@ -21,6 +21,15 @@ screen where a dump taken beside it has walked a tree that moved. A subtree noth
 visible is one line, its root, with the count of children that were never walked; `--no-prune` is
 still the way to see inside one.
 
+That account is kept by the passes themselves, which is what a change to them owes it. `filter` and
+`hinted` assign each box its fate at the line that drops it, in an array that starts out holding a
+placeholder — `window` for the collapse, `capped` for the plates — so a pass added without an
+assignment of its own reports every box it drops as the placeholder, and nothing fails to say so. A
+new reason is a new case of `Collapse` or `Plating`. `Walk.run` records an element before every
+return, because the dump finds each box's line by counting the walk's `box` entries: a return that
+skips the record puts the two out of step, and `⌘D` beeps rather than copy an account that names
+the wrong elements.
+
 Prefer changing the filter's passes over changing `--min-size`. The tree is mostly nested containers
 that repeat their child's box, and the collapse that removes them is what decides whether the
 overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that

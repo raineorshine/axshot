@@ -79,6 +79,16 @@ installed app; this is the mechanics it calls for.
   failure that reads as a bug in the code is a colour that disappears into one of them. That is
   where a palette and an amplitude get settled, across as many rounds as it takes, and the driven
   run afterwards is then asking whether the app puts it on screen rather than whether it is right.
+- **The real code runs outside the app, being one file with no dependencies.** A refactor of a
+  pure pass — `filter`, `hinted` — is checked by extracting both versions into one scratch file,
+  the old one from `git show origin/main:axshot.swift` under another name, and comparing their
+  answers over a few thousand generated inputs. Generate the cases each branch is there for — boxes
+  the size of their window, repeats inside the tolerance and on the grid, nesting either side of
+  the ratio — and tally which verdicts fired, since a branch the generator never reaches passes by
+  default. What needs the rest of the file, a view drawn into a PNG or what a `Session` makes of a
+  hand-built walk, is a hook spliced into a copy of the whole file ahead of `let arguments` — not
+  into `runSession`, which returns before its dump branch whenever no window can be walked. A view
+  with no window renders through `bitmapImageRepForCachingDisplay(in:)` and `cacheDisplay(in:to:)`.
 
 ## Waiting for the keyboard
 
@@ -691,7 +701,12 @@ Each of these cost time in the session that built the tool.
 
       ioreg -n Root -d1 -r | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'
 
-  An absent key is an unlocked session; `=Yes` means stop and hand the build over. The signatures
+  An absent key is an unlocked session; `=Yes` means stop driving, capturing and installing, and
+  hand the build over for those. Reading the tree is the exception. `--focused --bundle <id>`
+  answers `windows=0` there too, the disclaimed re-spawn being handed no window by any app, but the
+  same run with `--worker`, which skips the re-spawn and so reads as the shell does, walks the whole
+  window — so the before-and-after diff of a filter change's region lists does not wait for the
+  unlock. Give both builds the flag. The signatures
   it wears elsewhere read even less like the cause, because none of them is an error: a
   `screencapture` still writes a file of uniform mid-grey rather than failing, a driven capture
   leaves no file at all and says nothing, and `screencapture -v` never finalises its recording —
