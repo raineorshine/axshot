@@ -14,13 +14,15 @@ explained where it is implemented.
   sidebar is still half a sidebar's pixels. A region dragged by hand is the exception and is clipped
   to nothing but the desktop: a rectangle drawn around what someone is looking at is already what is
   on screen.
-- **A thumbnail on its way out is not cover, and is not waited for.** The capture dismisses it before
-  walking, but the window server hears of an order-out only once the run loop turns, and the walk
-  runs in the same turn — so the list still has the panel in its corner, and counting it cropped the
-  window underneath at every press made while one was showing. The walk is handed the dismissed
-  window and skips it. Waiting for the list was measured and turned down: kept off the run loop, the
-  panel was still listed half a second later, `CATransaction.flush()` or not, and let back onto it
-  the panel took 270ms to leave, that being AppKit's fade.
+- **A window this app puts away on the way into a walk is still in the list the walk reads.** The
+  window server hears of an order-out only once the run loop turns, and a walk started by a press
+  runs in the same turn as whatever that press dismissed — so the corner thumbnail, put away first,
+  went on cropping the window under it at every press made while one was showing. The walk is handed
+  the dismissed window and skips it, and any other window dismissed on the way in owes it the same.
+  Waiting for the list was measured and turned down: kept off the run loop, the panel was still
+  listed half a second later, `CATransaction.flush()` or not; let back onto it, it took about 270ms
+  to leave, that being AppKit's fade; and with the fade turned off it still wanted a turn of the run
+  loop inside the hotkey handler, in front of every walk.
 - **Every window with pixels of its own is hinted, not just the front one**, and they are walked at
   once. Raising a window to capture it changes what is being captured, which is the whole reason to
   reach one by hint. The window server culls the covered windows before any accessibility message is

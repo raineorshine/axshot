@@ -276,6 +276,12 @@ so the installed bundle owns `Axshot` and a `bin/axshot` run owns `axshot`. A pr
 exactly sees the app it was not driving and never fires for the one it was, which reads as an
 overlay that never came up rather than as a probe that cannot see it.
 
+The corner thumbnail is a third layer, 25, listed from just after a shot to a file lands until it
+has slid off. Anything meant to happen while one is up — the next press, a click on it — polls for
+it the way a key polls for the overlay rather than sleeping into its few seconds. `⌘⇧3` off the
+overlay is the cheapest shot that puts one there: a capture to a file with no label in it to be
+renumbered.
+
 Background the run itself, not just the line after it: a CLI run left in the foreground blocks the
 osascript that was meant to drive it, and the session then ends on its own deadline. That looks
 exactly like a real Escape — `cancelled=true` — and the only thing telling them apart is
@@ -375,6 +381,11 @@ shutter in one number. Photograph the overlay only for what it *draws* mid-drag.
 Run any such reproduction against a build *without* the fix before trusting it. One that passes
 either way is measuring something other than what it was written for, and it will go on passing
 after the fix for the same wrong reason.
+
+The build without the fix and the build with it can be one install. A throwaway that skips the fix
+while a flag file exists — `FileManager.default.fileExists(atPath:)` beside the line the fix added —
+runs the reproduction twice around a `touch` and an `rm`: one relaunch rather than two, and the lock
+held for two bursts rather than two builds.
 
 ## Driving the menu bar item and the settings window
 
@@ -619,7 +630,7 @@ does the same for one line. The section below is the exception rather than the r
 about *identity* is the one the interpreter cannot answer, because the answer is about a bundle it
 does not have.
 
-Two things to get right when what is being probed is a shared machine state rather than a pure
+Three things to get right when what is being probed is a shared machine state rather than a pure
 function of its arguments:
 
 - **Take a quiet baseline inside the probe.** A reading taken while the user happens to be typing or
@@ -631,6 +642,14 @@ function of its arguments:
   focus is, which is the user's window. A key bound nowhere — F16 — travels the same path and
   changes nothing on arrival. Posting to the probe's own pid looks safer still and is not the same
   experiment: it never enters the session, so nothing watching the session sees it.
+- **Turn the run loop the way the app does, and read the answer both ways.** What a process does to
+  its own windows reaches the window server only when its run loop turns, so a probe that orders a
+  window out and reads `CGWindowListCopyWindowInfo` in the same callout measures that deferral rather
+  than the window server. Read the list once with the thread kept off the run loop and once turning
+  it in millisecond slices: listed the first way and gone within a turn the second is an order-out
+  waiting on the run loop, and gone only after a stretch of turns is an animation. The window can be
+  a clear non-activating panel configured like the one in question, which draws nothing and takes no
+  focus, so the probe needs neither the lock nor the idle gate.
 
 ## Asking what the system draws
 
@@ -661,6 +680,28 @@ printing whatever is in doubt, build it into a `.app`, and run it both ways — 
 through a symlink to it. It needs no lock, no keyboard and no grant of its own, and it is the only
 cheap way to see the *before*: the real binary can only be asked one build at a time, and a fix has
 to be taken back out to ask it again.
+
+## Reading a crash
+
+A burst whose `--driving off` answers `app=none` after its `on` answered `running` is the app having
+died mid-burst. Put it back with a plain `open /Applications/Axshot.app` before anything else — the
+user's hotkey does nothing until then — and read the press it died on out of
+`~/Library/Logs/DiagnosticReports/axshot-<date>.ips`: JSON after a one-line header, whose faulting
+thread's frames carry an `imageOffset`.
+
+`EXC_BREAKPOINT` is a Swift trap, and a `-O` build names only the function it is in. The offset,
+plus the `0x100000000` the binary's text is linked at, lands in a run of `brk #1` stubs at the end of
+that function, one per trap site — so disassemble the build that crashed (`objdump -d` over the
+function, piped through `xcrun swift-demangle`) and grep for the branch *into* that stub. The
+instructions before the branch are the line: a string literal is loaded from immediate constants, so
+a run of `movk` spelling out part of an interpolation names it outright. A second frame in the same
+function is the link register — the last call made before the trap — rather than a caller.
+
+Throwaway logging is the likeliest source. `Int(_:)` traps on an infinite value, and `CGRect.null`
+has one for an origin: `Walk.box` is null for a window kept from the cull only by a strip hanging
+off the screen, because the cull measures the window's frame and the walk clips it to the screens
+first. Format a rect through `isNull`, as the `⌘D` account does, or the diagnostic crashes the
+installed app on the first press whose desktop has such a window.
 
 ## Exercising the lock script
 
@@ -754,3 +795,8 @@ next keystroke goes wherever the last activation left it — which is how a test
 app nobody chose. `bin/axshot --driving off` is what returns it, along with taking the border down,
 and it belongs at the end of every burst that ran `--driving on` rather than only at the end of the
 test.
+
+The save folder is the last. A driven capture to a file leaves a picture of the user's screen there
+under the same timestamped name as their own shots, where it reads as theirs. List the folder before
+the run, and move what the run added to the Trash once it has been measured — the Trash rather than
+`rm`, since a timestamp alone does not prove a file was the run's.

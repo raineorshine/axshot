@@ -112,6 +112,16 @@ rather than about shipping, and they apply here unchanged. Then re-run the line 
 the rebase pulled in before trusting anything measured after it: a conflict that resolved cleanly can
 still leave the change doing nothing, and the build proves only that it compiles.
 
+What it pulled in is everything `origin/main` gained since the branch was cut:
+
+```bash
+git log --oneline $(git merge-base ORIG_HEAD origin/main)..origin/main
+```
+
+Not what the fetch printed, and not `origin/main` as it stood a moment before: remote-tracking refs
+are shared by every worktree of the checkout, so another session's fetch has often moved it already,
+and a range taken from that snapshot comes back empty over a rebase that brought in a feature.
+
 The signing line must read `signed by Axshot Local Signing`. If it says `signed by -`, the build fell
 back to ad-hoc: **both permission grants are dead for that bundle**, `install` will refuse it, and
 any result from it is meaningless. Fix the signing first.
@@ -287,6 +297,13 @@ first:
 ```bash
 ./scripts/axshot-test-lock.sh break
 ```
+
+`STALE` is the lock's age and nothing else. A holder at step 7 keeps the lock for as long as the user
+takes to look, which is routinely past half an hour, and breaking it pulls the build out from under
+their hands. Nor is the title `status` prints current — it is the one the holder had when it queued.
+Read the live one with `get_session` and the session id `status` printed: `🔒 ` on a session that is
+not running is a hand-off waiting on the user, not an abandoned lock, and the answer is to queue
+behind it.
 
 Breaking a lock that is *not* stale requires confirming with the user that no test is in flight,
 then `AXSHOT_LOCK_STALE=0 ./scripts/axshot-test-lock.sh break`. Never on a hunch — the holder is
