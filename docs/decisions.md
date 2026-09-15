@@ -14,6 +14,13 @@ explained where it is implemented.
   sidebar is still half a sidebar's pixels. A region dragged by hand is the exception and is clipped
   to nothing but the desktop: a rectangle drawn around what someone is looking at is already what is
   on screen.
+- **A thumbnail on its way out is not cover, and is not waited for.** The capture dismisses it before
+  walking, but the window server hears of an order-out only once the run loop turns, and the walk
+  runs in the same turn — so the list still has the panel in its corner, and counting it cropped the
+  window underneath at every press made while one was showing. The walk is handed the dismissed
+  window and skips it. Waiting for the list was measured and turned down: kept off the run loop, the
+  panel was still listed half a second later, `CATransaction.flush()` or not, and let back onto it
+  the panel took 270ms to leave, that being AppKit's fade.
 - **Every window with pixels of its own is hinted, not just the front one**, and they are walked at
   once. Raising a window to capture it changes what is being captured, which is the whole reason to
   reach one by hint. The window server culls the covered windows before any accessibility message is

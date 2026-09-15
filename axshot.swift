@@ -543,7 +543,13 @@
 // than the window, so the one thing worth confirming is which region landed. A click opens the file
 // and dismisses it. It is a non-activating panel, so it takes no more focus than the overlay does,
 // and the next capture dismisses it before walking rather than waiting for it to expire -- a toast
-// still on screen is something screencapture(1) would photograph.
+// still on screen is something screencapture(1) would photograph. Dismissed is not yet gone from the
+// window list the walk reads, though: the window server hears of an order-out only once the run loop
+// turns, which the capture has not let it do by the time it walks. Counted as cover, the thumbnail
+// cropped the window under that corner at every press made while one was showing, so the walk is
+// handed the window that was put away and passes over it -- rather than waiting for the list to
+// catch up, which is a quarter of a second of AppKit fading the panel out in front of every such
+// press.
 //
 // The one time it is not an accessory is while the settings window is open: it turns regular so the
 // window can be reached from the App Switcher and gets a menu bar, and back to accessory when the
@@ -664,6 +670,10 @@ struct Options {
   /// The chord that opened the session, so pressing it again closes it. Set by the menu bar app; a
   /// command line run was not opened by a chord and leaves it nil.
   var cancelChord: Chord?
+  /// The window of the corner thumbnail put away on the way into this session, which the window
+  /// server still lists when the walk reads it. Set by the menu bar app; a command line run shows no
+  /// thumbnail and leaves it nil.
+  var dismissedToast: Int?
 }
 
 func usage() -> Never {
@@ -906,7 +916,18 @@ func onScreenWindows(options: Options, only: pid_t?) -> (targets: [WindowTarget]
     // axshot's own windows are never hinted -- the settings window and the shortcut sheet are not
     // regions of anyone's work -- but they are drawn over what is behind them like anything else, so
     // they still count as cover. The overlay is not one of them: it does not go up until the walk
-    // has finished, and the toast is dismissed before the walk starts.
+    // has finished.
+    //
+    // Nor is the corner thumbnail, although the list still has it. The capture puts it away before
+    // walking, but an order-out reaches the window server only once the run loop turns, and the walk
+    // runs in the same turn as the dismissal -- so the panel is listed exactly where it stood, and
+    // counted, it cropped the window under that corner at every press made while a thumbnail was
+    // showing. It is passed over by name rather than waited for. Measured, a panel kept off the run
+    // loop was still listed half a second after its order-out, with or without a flush of the
+    // transaction, and one let back onto it left the list 270ms later: AppKit fades a panel out, and
+    // the list holds it for the length of the fade.
+    if pid == ownPid, let dismissed = options.dismissedToast,
+       entry[kCGWindowNumber as String] as? Int == dismissed { continue }
     if layer == 0, pid != ownPid, only == nil || only == pid {
       let over = covers.filter { $0.intersects(frame) }
       let open = exposed(frame, under: over)
@@ -4082,7 +4103,8 @@ func transcribeImage(_ png: Data, completion: @escaping (String?, String?) -> Vo
 /// It is a non-activating panel, for the same reason the overlay never takes focus -- a toast that
 /// activated the app would redraw the target's title bar inactive the moment the shot landed. It is
 /// also dismissed at the start of the next capture rather than left to expire, since a toast still
-/// on screen is something the next screencapture(1) would photograph.
+/// on screen is something the next screencapture(1) would photograph -- and the dismissal says which
+/// window it put away, since the walk that follows reads a window list that still has it.
 final class ToastView: NSView {
   var image: NSImage?
   var onClick: (() -> Void)?
@@ -4211,9 +4233,14 @@ final class Toast {
       userInfo: [.announcement: "Screenshot saved to \((path as NSString).lastPathComponent)"])
   }
 
-  static func dismiss() {
+  /// Returns the window that was put away. The window server goes on listing it until the run loop
+  /// turns, and a walk started before then would count it as cover.
+  @discardableResult
+  static func dismiss() -> Int? {
+    let number = current?.panel.windowNumber
     current?.close()
     current = nil
+    return number
   }
 }
 
@@ -5825,10 +5852,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     busy = true
     defer { busy = false }
 
-    // A toast still on screen is something the next screencapture(1) would photograph.
-    Toast.dismiss()
-
     var options = Options()
+    // A toast still on screen is something the next screencapture(1) would photograph. The walk is
+    // told which window it was, being about to read a list the order-out has not reached yet.
+    options.dismissedToast = Toast.dismiss()
     options.destination = .directory(Settings.saveDirectory)
     options.toast = true
     options.cancelChord = Settings.chord
