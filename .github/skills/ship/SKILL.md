@@ -115,6 +115,12 @@ Each merges cleanly and the compiler is content, because nothing in the language
 together — so grep the old field's assignments in the merged file and look for the new one next to
 every one of them.
 
+**A fix is read against the docs the rebase brought in.** The session that met a bug is the
+likeliest to have written it up, and a write-up made before the fix describes the bug as how the app
+behaves — a hazard to work around, the cause of a crash — while its learnings can land after this
+branch was cut. So grep `docs/` and the skills for the symptom the branch removes once the rebase is
+done, and correct what the fix made untrue in the same ship rather than leave it reading as current.
+
 Re-run `./build.sh --no-install` after any rebase that brought code in. Step 1 signed off on the
 tree as it was before this step, which is not the tree being pushed — and a rebase is exactly where
 a compile stops being a formality, since resolving a conflict is the one moment in this procedure

@@ -47,6 +47,17 @@ installed app; this is the mechanics it calls for.
   The bundle around it is not optional. A loose binary signed with the same identity answers
   `trusted=false` however it was built — the grant's requirement names the bundle identifier and a
   bare Mach-O carries none — so the comparison binary goes inside a copy of `Axshot.app`.
+
+  Dump each build twice, alternating, and diff each build against itself as well as against the
+  other. The desktop can move between two runs, and a before-and-after diff cannot say which of its
+  lines are the change and which are a window redrawing; an empty diff of one build against itself
+  is what says so. A change to *which windows* are walked renumbers `w<n>` on every line after the
+  window it added or dropped, the way a label does, so swap each index for the app and pid on its
+  window line, and strip `walk_ms`, which no two runs share. `--bundle` narrowed to the app the
+  change is about then puts the verdict on one line. Whether the desktop holds the case at all is
+  asked before either build exists, for a rule about windows rather than elements: a scratch script
+  running the old rule and the new one over `CGWindowListCopyWindowInfo` names the windows that
+  would change.
 - The outcome line is the assertion for anything that changes *which* region a session ends on.
   `rect=` is printed on the capture line, so a driven run can be checked against the region list
   from a `--dump` of the same window without looking at a pixel; photograph the overlay only for
@@ -735,23 +746,32 @@ Each of these cost time in the session that built the tool.
   it — and read the pattern as the bug rather than the build.
 - **A black screenshot means the display is asleep**, not that the window is missing. Anything
   visual is unverifiable until someone wakes it.
-- **Window queries go quiet while the session is locked.** `--dump` reporting `windows=0` for every
+- **A locked session hides every window from the walk.** `--dump` reporting `windows=0` for every
   app on the machine — not one app, all of them — is the signature, and it reads exactly like a
-  tree that is never exposed. Nothing visual can be driven or captured until someone unlocks it, so
-  check before concluding anything about the walk:
+  tree that is never exposed. Measured, the window list is not empty: the lock screen is windows of
+  its own, loginwindow's and the window server's at layer 2000 and above with an ordinary sharing
+  state, and the cull counts them as cover like any other. So the whole desktop comes back culled,
+  which is word for word what a live overlay answers as well; the owner at the front of the window
+  list tells the two apart, and so does the key below. Nothing visual can be driven or captured
+  until someone unlocks it, so check before concluding anything about the walk:
 
       ioreg -n Root -d1 -r | grep -o 'CGSSessionScreenIsLocked"=[A-Za-z]*'
 
-  An absent key is an unlocked session; `=Yes` means stop driving, capturing and installing, and
-  hand the build over for those. Reading the tree is the exception. `--focused --bundle <id>`
-  answers `windows=0` there too, the disclaimed re-spawn being handed no window by any app, but the
-  same run with `--worker`, which skips the re-spawn and so reads as the shell does, walks the whole
-  window — so the before-and-after diff of a filter change's region lists does not wait for the
-  unlock. Give both builds the flag. The signatures
-  it wears elsewhere read even less like the cause, because none of them is an error: a
-  `screencapture` still writes a file of uniform mid-grey rather than failing, a driven capture
-  leaves no file at all and says nothing, and `screencapture -v` never finalises its recording —
-  it ignores its own `-V` limit and has to be killed.
+  An absent key is an unlocked session; `=Yes` means stop driving, capturing and installing. Where
+  the rest of the test is the session's own rather than a look the user was asked for, that is a
+  wait and not a hand-off: a `run_in_background` loop on the key, bounded, exits at the unlock, and
+  its notification is the signal to carry on — every burst after it still behind the idle gate, the
+  person who unlocked being back at the keyboard. Reading the tree is the exception.
+  `--focused --bundle <id>` answers `windows=0` there too, the disclaimed re-spawn being handed no
+  window by any app, but the same run with `--worker`, which skips the re-spawn and so reads as the
+  shell does, walks the whole window — so the before-and-after diff of a filter change's region
+  lists does not wait for the unlock. Give both builds the flag. `--focused` never runs the cull,
+  though, so a change to which windows are walked has nothing to diff until then: every window is
+  behind the lock screen on both builds. The signatures it wears elsewhere read even less like the
+  cause, because none of them is an error: a `screencapture` still writes a file of uniform
+  mid-grey rather than failing, a driven capture leaves no file at all and says nothing, and
+  `screencapture -v` never finalises its recording — it ignores its own `-V` limit and has to be
+  killed.
 - **Relaunching the app strands the lock while the session is locked.** `open -a` fails there with
   `_LSOpenURLsWithCompletionHandler ... error -600` where a plain `open /Applications/Axshot.app`
   launches it, and the lock script restores with the first under `set -e`. So `release` quits the
