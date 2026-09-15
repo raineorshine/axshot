@@ -496,10 +496,13 @@
 // the overlay masks and brackets the region before the shutter, so what will be photographed is on
 // screen before Return is pressed.
 //
-// A window with nothing left at all is never walked, which is what makes the rest affordable.
-// Everything on screen counts as drawn over: the menu bar, the Dock, a floating notification panel.
-// Only ordinary windows are hinted, so a menu, a popover or a Spotlight panel masks the window it
-// is over rather than being offered as a region of its own.
+// A window with nothing left at all is never walked, which is what makes the rest affordable. What
+// is left is asked of the part of the window on a screen, the rectangle its walk is clipped to, and
+// not of its whole frame: a window can hang off the edge of a display, nothing is ever drawn over
+// the part past the edge, and measured whole a window covered everywhere it can be seen keeps that
+// strip and is walked for nothing. Everything on screen counts as drawn over: the menu bar, the
+// Dock, a floating notification panel. Only ordinary windows are hinted, so a menu, a popover or a
+// Spotlight panel masks the window it is over rather than being offered as a region of its own.
 //
 // Except a window no capture can see, which covers nothing and is not hinted either. The window
 // server says so outright -- a sharing state of none is a window left out of every picture taken of
@@ -886,7 +889,12 @@ func frameDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
 /// accessibility message has been sent, which is what makes the culling free. A desktop of forty
 /// on-screen windows is usually four with any pixels of their own; the other thirty-six are dropped
 /// here, and are never asked anything.
-func onScreenWindows(options: Options, only: pid_t?) -> (targets: [WindowTarget], culled: Int, unmatched: Int) {
+///
+/// What can be seen is measured inside `screenArea`, the rectangle every walk is clipped to, and not
+/// across the window's whole frame. A window can hang off the edge of a display, and nothing is ever
+/// drawn over the part past the edge: measured whole, a window covered everywhere it is on screen
+/// keeps that strip, and is walked for nothing.
+func onScreenWindows(options: Options, only: pid_t?, screenArea: CGRect) -> (targets: [WindowTarget], culled: Int, unmatched: Int) {
   let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
   let ownPid = ProcessInfo.processInfo.processIdentifier
 
@@ -929,8 +937,11 @@ func onScreenWindows(options: Options, only: pid_t?) -> (targets: [WindowTarget]
     if pid == ownPid, let dismissed = options.dismissedToast,
        entry[kCGWindowNumber as String] as? Int == dismissed { continue }
     if layer == 0, pid != ownPid, only == nil || only == pid {
-      let over = covers.filter { $0.intersects(frame) }
-      let open = exposed(frame, under: over)
+      // Only the part on a screen is asked about. The covers stay whole: every piece measured here
+      // is inside the screens, so the part of a cover past the edge has nothing to meet.
+      let onScreen = frame.intersection(screenArea)
+      let over = covers.filter { $0.intersects(onScreen) }
+      let open = onScreen.isNull || onScreen.isEmpty ? [] : exposed(onScreen, under: over)
       if open.contains(where: { $0.width >= options.minSize && $0.height >= options.minSize }) {
         wanted.append((pid, frame, over))
       } else {
@@ -1089,6 +1100,10 @@ final class Walk {
   /// cropped to the largest piece nothing in front covers. What fills a window is a run of elements
   /// rather than one, all reporting the same frame, so this is what the filter measures against
   /// instead of asking for a role.
+  ///
+  /// `.null` when nothing is left, whose origin is infinite and traps in an `Int`. The cull asks the
+  /// same question of the same rectangle and walks no such window, so only `--focused`, which culls
+  /// nothing, can still hand one over.
   var box: CGRect {
     exposed(clip, under: occluders).max { $0.width * $0.height < $1.width * $1.height } ?? .null
   }
@@ -4293,6 +4308,15 @@ func runSession(_ options: Options) -> Outcome {
     only = app.processIdentifier
   }
 
+  // A window can hang off the edge of its display; only the part on a screen can be captured, so
+  // that part is what the cull measures and what each walk is clipped to.
+  let screens = NSScreen.screens
+  guard let primary = screens.first else {
+    return Outcome(code: 6, line: "screens=0 total_ms=\(millis(since: start))")
+  }
+  let flipBase = primary.frame.maxY
+  let screenArea = screens.map { flipY($0.frame) }.reduce(CGRect.null) { $0.union($1) }
+
   let targets: [WindowTarget]
   var culled = 0
   var unmatched = 0
@@ -4306,7 +4330,7 @@ func runSession(_ options: Options) -> Outcome {
     }
     targets = [window]
   } else {
-    (targets, culled, unmatched) = onScreenWindows(options: options, only: only)
+    (targets, culled, unmatched) = onScreenWindows(options: options, only: only, screenArea: screenArea)
   }
   guard !targets.isEmpty else {
     return Outcome(code: 6, line: "windows=0 culled=\(culled) unmatched=\(unmatched) total_ms=\(millis(since: start))")
@@ -4314,14 +4338,6 @@ func runSession(_ options: Options) -> Outcome {
   func name(_ target: WindowTarget) -> String {
     target.app.localizedName ?? target.app.bundleIdentifier ?? "?"
   }
-
-  // A window can hang off the edge of its display; only the part on a screen can be captured.
-  let screens = NSScreen.screens
-  guard let primary = screens.first else {
-    return Outcome(code: 6, line: "screens=0 total_ms=\(millis(since: start))")
-  }
-  let flipBase = primary.frame.maxY
-  let screenArea = screens.map { flipY($0.frame) }.reduce(CGRect.null) { $0.union($1) }
 
   // Each window is a different process answering its own stream of accessibility messages, so
   // walking them at once overlaps the waiting rather than the work: it costs the slowest app rather

@@ -698,10 +698,10 @@ a run of `movk` spelling out part of an interpolation names it outright. A secon
 function is the link register — the last call made before the trap — rather than a caller.
 
 Throwaway logging is the likeliest source. `Int(_:)` traps on an infinite value, and `CGRect.null`
-has one for an origin: `Walk.box` is null for a window kept from the cull only by a strip hanging
-off the screen, because the cull measures the window's frame and the walk clips it to the screens
-first. Format a rect through `isNull`, as the `⌘D` account does, or the diagnostic crashes the
-installed app on the first press whose desktop has such a window.
+has one for an origin: `Walk.box` is null for a window with nothing left of it on a screen. The
+cull measures the rectangle the walk clips to and so never walks such a window, but `--focused`
+culls nothing and walks one all the same. Format a rect through `isNull`, as the `⌘D` account
+does, or the diagnostic traps on the first run that meets one.
 
 ## Exercising the lock script
 

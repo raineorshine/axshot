@@ -27,7 +27,10 @@ explained where it is implemented.
   once. Raising a window to capture it changes what is being captured, which is the whole reason to
   reach one by hint. The window server culls the covered windows before any accessibility message is
   sent, which on a crowded desktop is most of them; what survives is a handful of separate processes,
-  and waiting on those one at a time is waiting the machine did not have to do.
+  and waiting on those one at a time is waiting the machine did not have to do. Covered is measured
+  on the part of a window that is on a screen, the rectangle its walk is clipped to: nothing is ever
+  drawn over the part hanging past a display's edge, so a window measured whole keeps that strip
+  however hidden the rest of it is, and is walked for nothing.
 - **The window itself is never a region.** A box the size of the window is the shot ⌘⇧4 then Space
   already takes, and it was standing in front of the region worth having: the nesting collapse drops
   an inner box the outer one swallows unless the inner is more than two thirds of it, which a content
