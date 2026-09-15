@@ -18,7 +18,7 @@
 # them -- so a test driving the app would spend its time resetting its own gate.
 #
 # What no source separates is a real keypress from one this session posted to
-# `.cghidEventTap`, the route docs/testing.md uses to hold a chord: those move
+# `.cghidEventTap`, the route docs/driving.md uses to hold a chord: those move
 # the hid clock exactly as a person's would. So this is a gate to pass through
 # *before* a burst of keystrokes, not something to call between them -- run
 # straight after your own drive it spends the whole threshold waiting on its own

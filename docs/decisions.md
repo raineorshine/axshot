@@ -146,12 +146,10 @@ explained where it is implemented.
 
 ## The overlay on screen
 
-- **A control is named, reachable by Tab and legible at 4.5:1.** What the app draws is pictures — a
-  hint plate, a chord box, a swatch, a thumbnail — and a picture says nothing to a reader and
-  answers no key by itself, so each carries its own title, value and press and takes Space the way a
-  button does. The overlay is the exception: it holds the whole keyboard while it is up, so a reader
-  gets Escape and nothing else. [accessibility.md](accessibility.md) is the set of ways
-  this looks done when it is not.
+- **A control is named, reachable by Tab and legible at 4.5:1, and the overlay is the exception.**
+  What the app draws is pictures — a hint plate, a chord box, a swatch, a thumbnail — and a picture
+  says nothing to a reader and answers no key by itself, so each carries its own title, value and
+  press. [accessibility.md](accessibility.md) is the rule and the ways it looks done when it is not.
 - **A driven burst says it is one, and gives the foreground back.** `--driving on`/`off` brackets
   it, and what is bracketed is the burst rather than the test lock — a border up for the whole time
   the lock is held is a colour nobody sees by the second look, and the user testing by hand is not
@@ -188,7 +186,5 @@ explained where it is implemented.
   no longer matches it, to close a window that a refusal already covers.
 - **`origin/main` advances by fast-forward only, and "merge main" names the rebase.** A branch
   squashes onto it and pushes, so the history carries no merge commits and a rejected push costs a
-  rebase and a retry rather than anything else. Both skills say the word loosely — `ship` is titled
-  "finish change → merge to main" and calls a rebase conflict a merge — so an instruction to merge
-  main before testing or shipping is the fetch-and-rebase each of them already opens with, and not a
-  request to start keeping merge commits.
+  rebase and a retry rather than anything else. An instruction to merge main before testing or
+  shipping is the fetch-and-rebase both skills already open with, not a request for merge commits.

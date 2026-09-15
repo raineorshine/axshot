@@ -4,13 +4,13 @@ Everything the app puts on screen except the overlay is a window someone may be 
 screen reader or driving with a keyboard, and every control in it is *drawn* rather than assembled —
 a plate, a chord box, a thumbnail. A drawn control says nothing to either one unless it is told to.
 The rule is that a control is named in the tree, reachable by Tab, and legible at 4.5:1. The overlay
-is the exception, and [axshot.swift](../axshot.swift)'s header says why.
+is the exception: it holds the whole keyboard while it is up, so a reader gets Escape and nothing
+else.
 
-The drive mark — the band around each screen — is outside that rule too, and for a nearer reason: it
-is drawn over somebody else's window rather than being a control, it answers no key, and a
-borderless window sitting above every application is the last thing a reader should have to step
-past to reach the one underneath. It is not an element, and nothing about an agent holding the
-foreground reaches a screen reader today.
+The drive mark — the band around each screen — is outside the rule too: it is drawn over somebody
+else's window rather than being a control, answers no key, and is the last thing a reader should
+have to step past to reach the window underneath. So nothing about an agent holding the foreground
+reaches a screen reader today.
 
 What follows is the set of things that look like they are already working.
 
@@ -22,10 +22,9 @@ take it and stays there for ever. Nothing warns, every control draws correctly, 
 be reached. Set it before the subviews go in.
 
 Check it by pressing Tab and reading `focused` back out of the tree, never by looking — walking a
-window's elements from a shell is in
-[testing.md](testing.md#driving-the-menu-bar-item-and-the-settings-window). Full Keyboard Access has
-to be on for Tab to reach a button at all (`defaults read -g AppleKeyboardUIMode`, 2 or 3), and a
-loop that was never wired and a machine with the setting off are the same picture.
+window's elements from a shell is in [driving.md](driving.md#driving-the-settings-window). Full
+Keyboard Access has to be on for Tab to reach a button at all (`defaults read -g AppleKeyboardUIMode`,
+2 or 3), and a loop that was never wired and a machine with the setting off are the same picture.
 
 A view that Tab can land on has to show that it has been landed on. `drawFocusRingMask` plus
 `focusRingMaskBounds` is the whole of it — AppKit draws the standard ring off the mask, and a ring

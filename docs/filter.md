@@ -32,14 +32,10 @@ the wrong elements.
 
 Prefer changing the filter's passes over changing `--min-size`. The tree is mostly nested containers
 that repeat their child's box, and the collapse that removes them is what decides whether the
-overlay is legible; the floor only hides small *containers*, text being exempt from it. A count that
-needs bringing down is `--max-hints`'s to answer rather than the floor's — most of a text-heavy
-window's regions are under the floor and stay there whatever it is set to. `--max-hints` is what
-brings the *plates* down and it drops no regions at all: it defaults to as many as the hint alphabet
-labels in two keystrokes, and hands them to leaves first, then containers, size descending within
-each, skipping any region whose corner lands on a plate already placed. An unlettered region is in
-the list like any other and every arrow steps to it, so the ranking decides what is convenient to
-reach rather than what is reachable at all.
+overlay is legible; the floor only hides small *containers*, text being exempt from it, so most of a
+text-heavy window's regions sit under it whatever it is set to. A crowded overlay is `--max-hints`'s
+to answer, and that drops no regions: it rations the plates, leaves first, and an unlettered region
+is still stepped to by every arrow. [decisions.md](decisions.md) has why both work that way.
 
 When quoting costs, measure the walk and the capture together. The capture is the larger half by an
 order of magnitude, so a change that halves the walk is invisible, and a benchmark that reports only

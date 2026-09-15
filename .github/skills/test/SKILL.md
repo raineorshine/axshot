@@ -5,27 +5,23 @@ description: "Test an axshot change by installing this branch's build into the l
 
 # Test (drive this branch's build as the installed app)
 
-There is one installed app, `/Applications/Axshot.app`, and one keyboard. A worktree compiles its
-own bundle freely, but testing means putting that build in the live slot and driving it — and while
-the hint overlay is up it swallows every keystroke on the machine. **Editing is parallel, testing is
+There is one installed app, `/Applications/Axshot.app`, and one keyboard. A worktree compiles its own
+bundle freely, but testing means putting that build in the live slot and driving it — and while the
+hint overlay is up it swallows every keystroke on the machine. **Editing is parallel, testing is
 serial.**
 
 `scripts/axshot-test-lock.sh` is that mutex. It snapshots the installed app *inside the lock* before
-overwriting it, so release puts back byte-exactly whatever was there, and records whether the app
-was running so a test never ends with the user's menu bar app missing.
+overwriting it, so release puts back byte-exactly whatever was there, and records whether the app was
+running so a test never ends with the user's menu bar app missing.
 
-[docs/testing.md](../../../docs/testing.md) has the mechanics — driving the overlay from a shell,
-photographing it, and which failures are the environment. This skill is the order and what passes.
+**None of it needs the user.** The overlay reads posted events, so a shell drives the whole path. Ask
+for a human only when the question is how something *looks* and you have already captured it and
+cannot judge.
 
-**None of it needs the user.** The overlay reads posted events, so AppleScript drives the whole
-path. Ask for a human only when the question is how something *looks* and you have already captured
-it and cannot judge.
-
-**And none of it waits to be asked for.** A change the user would see or touch is not delivered by a
-clean compile: what they would look at is not on their machine until step 3 has put it there, so a
-turn that ends "try it and tell me" before the install has parked them in front of the app they
-already had. Run this skill as the last step of building such a change, and hand it over from
-inside the lock.
+This skill is the order and what passes. The mechanics are [testing.md](../../../docs/testing.md) for
+everything that needs no lock, [driving.md](../../../docs/driving.md) and
+[seeing.md](../../../docs/seeing.md) for the live app, and
+[environment.md](../../../docs/environment.md) for failures that are the machine.
 
 ## Division of labor
 
@@ -33,18 +29,12 @@ inside the lock.
 |---|---|---|
 | `/Applications/Axshot.app` | the app the user runs; owns the hotkeys and the login item | Never edited directly. Written only through `install`. |
 | `<checkout>/Axshot.app` | this branch's build, gitignored | Where `build.sh` compiles. Free, parallel, lock-free. |
-| `.claude/axshot-test.lock/` | the mutex and the pre-test snapshot | Held only while actually testing. |
+| `<main checkout>/.claude/axshot-test.lock/` | the mutex and the pre-test snapshot | Held only while actually testing. |
 
-**Acquire late, release fast.** Compiling, `--dump` against another app, and reading the candidate
-list need no lock — `--dump` never draws an overlay and never touches the installed app. Neither does
-photographing a rect it printed: `screencapture -x -o -R x,y,w,h` answers whether a computed region
-frames what it claims to, which is most of what a filter change is judged on and none of it needs the
-overlay, the keyboard or the live slot. Neither does judging how a drawing *looks*: a draw function
-rendered into a PNG by a standalone `swift` script is the real arithmetic over sample content, and
-settling a colour or an amplitude there leaves the driven run to ask only whether the app puts it on
-screen — see
-[docs/testing.md](../../../docs/testing.md#the-paths-that-need-no-interaction). Take the lock only
-once you are about to put a build in it.
+**Acquire late, release fast.** Compiling with `--no-install`, `--dump`, photographing a rect it
+printed and rendering a drawing into a PNG all need no lock, and most of a filter change is judged
+there ([testing.md](../../../docs/testing.md#what-needs-no-lock)). Take the lock only once you are
+about to put a build in the live slot.
 
 ## Procedure
 
@@ -54,86 +44,74 @@ once you are about to put a build in it.
 ./scripts/axshot-test-lock.sh status
 ```
 
-It prints the holder and everyone queued behind them. **Never wait in a loop** — `wait` blocks in
-the kernel and the queue is ordered, so a polling loop would only burn turns and jump people.
+It prints the holder and everyone queued behind them.
 
 ### 2. Acquire
 
-Prefix this session's title with `🔓 ` first (`set_session_title`, replacing any existing lifecycle
-prefix — see AGENTS.md "Session titles"). Set it before the acquire, not after: if the acquire is
-denied, drop the prefix again. Do not report this.
-
-Take it with `wait`, in the background, whether or not the lock looked free:
+Set the title's prefix to `🔓 ` first (AGENTS.md "Session titles"), then take the lock with `wait`,
+in the background (`run_in_background`), whether or not it looked free:
 
 ```bash
 ./scripts/axshot-test-lock.sh wait "what you are testing" "<this session's title>"
 ```
 
-Free lock: it acquires and exits immediately. Held: this session takes a ticket and blocks until its
-turn, and the run exits — notifying the session — the moment it holds the lock. Run it with
-`run_in_background` so the wait costs nothing; the notification is the signal to carry on at step 3.
-Waiting sessions are served in arrival order, and a plain `acquire` refuses to jump them.
+A free lock is taken at once. A held one gives this session a ticket, and the run exits — notifying
+the session — the moment it holds the lock; waiting sessions are served in arrival order. **Never wait
+in a loop instead:** `wait` blocks in the kernel, a polling loop only burns turns, and a plain
+`acquire` refuses to jump the queue anyway.
 
-It can also come back without the lock, and the exit says which: `acquired` on the last line means
-step 3. `GAVE UP` means the wait hit its half-hour bound — the report says what it was waiting on,
-and that goes to the user rather than being broken open here. And `this ticket was cleared` means
-someone ran `dequeue`; re-run `wait` to take a new place.
+The last line says how it ended:
 
-Either way it snapshots the installed app and records whether it was running. Re-running from the
-same session is a no-op and will not re-snapshot, so an interrupted session can resume — but a
-*second* session on the same worktree is queued like any other, not handed the first one's lock.
+- **`acquired`** — swap the prefix to `🔒 ` and go to step 3. It has snapshotted the installed app and
+  recorded whether it was running. Re-running from the same session is a no-op that keeps the
+  snapshot, so an interrupted session can resume; a *second* session on the same worktree is queued
+  like any other, not handed the first one's lock.
+- **`GAVE UP`** — the wait hit its half-hour bound. The report says what it was waiting on; that goes
+  to the user rather than being broken open here, and the session parks at `🚙 `.
+- **`this ticket was cleared`** — someone ran `dequeue`; run `wait` again to take a new place.
 
-Once it reports `acquired`, swap the prefix to `🔒 `. Do not report this.
-
-**A queued session is parked, not idle.** Stay `🔓 ` — it means "about to take the lock" — and say
-which session is ahead. Do the lock-free work in the meantime (`--dump`, editing, reading), but do
-not build: `build.sh` installs, and the install is what the lock exists to serialise. Cancelling the
-background task leaves the queue.
+While queued, the session stays `🔓 ` and says which session is ahead. Do the lock-free work meanwhile,
+but do not run a plain `build.sh`: it installs, and the install is what the lock exists to serialise.
+Cancelling the background task leaves the queue.
 
 ### 3. Rebase on origin/main, then build and install
 
-Fetch and rebase every time, not only when the branch looks behind. A worktree here can be many
-commits behind `origin/main` while carrying nothing of its own — several land during a single test —
-and `build.sh` compiles what the worktree has, so installing without rebasing puts superseded
-`axshot.swift` in the live slot and everything after this step measures code that main replaced.
-Whether it is behind is not a thing to judge from what the session remembers: the fetch is what
-answers it, and the answer costs nothing when it is no. Commit first if the tree is dirty: a rebase
-refuses one, and the stash is shared with every other worktree.
+Fetch and rebase every time, not only when the branch looks behind: several ships can land during a
+single test, and `build.sh` compiles what the worktree holds, so an install without the rebase puts
+superseded code in the live slot and everything after this step measures code that main replaced.
+Commit first if the tree is dirty — a rebase refuses one, and the stash is shared with every other
+worktree.
 
 ```bash
 git fetch origin && git rebase origin/main && ./build.sh
 ```
 
-The `&&` is load-bearing — a rebase that stops on a conflict fails the chain, so `build.sh` never
-puts a half-merged tree in the live slot. What it leaves is a worktree mid-rebase, which is conflicts
-to resolve and not a command to run again. Resolve them the way
-[`ship` step 3](../ship/SKILL.md#3-rebase-on-originmain) says to; its traps are about the rebase
-rather than about shipping, and they apply here unchanged. Then re-run the line above, and read what
-the rebase pulled in before trusting anything measured after it: a conflict that resolved cleanly can
-still leave the change doing nothing, and the build proves only that it compiles.
-
-What it pulled in is everything `origin/main` gained since the branch was cut:
+The `&&` is load-bearing: a rebase that stops on a conflict fails the chain, so `build.sh` never puts
+a half-merged tree in the live slot. Resolve the conflicts the way
+[`ship` step 3](../ship/SKILL.md#3-rebase-on-originmain) says — its traps are about the rebase, not
+the ship — and re-run the line. Then read what the rebase brought in before trusting anything measured
+after it, since a conflict that resolved cleanly can still leave the change doing nothing:
 
 ```bash
 git log --oneline $(git merge-base ORIG_HEAD origin/main)..origin/main
 ```
 
-Not what the fetch printed, and not `origin/main` as it stood a moment before: remote-tracking refs
-are shared by every worktree of the checkout, so another session's fetch has often moved it already,
-and a range taken from that snapshot comes back empty over a rebase that brought in a feature.
+Take the range from `ORIG_HEAD`, not from what the fetch printed or from `origin/main` as it stood a
+moment ago: remote-tracking refs are shared by every worktree, another session's fetch has often moved
+them already, and a range from that snapshot comes back empty over a rebase that brought in a feature.
 
-The signing line must read `signed by Axshot Local Signing`. If it says `signed by -`, the build fell
-back to ad-hoc: **both permission grants are dead for that bundle**, `install` will refuse it, and
-any result from it is meaningless. Fix the signing first.
-
-`build.sh` installs through the lock — quitting the running instance, swapping the bundle, and
-relaunching if it was running. It refuses outright while another session holds the lock.
+The signing line must read `signed by Axshot Local Signing`. `signed by -` means the build fell back
+to ad-hoc: **both permission grants are dead for that bundle**, `install` refuses it, and any result
+from it is meaningless. Fix the signing first
+([permissions.md](../../../docs/permissions.md#the-keychain-prompt)).
 
 ### 4. Confirm the grants survived
 
-The app opens its settings window **only** when a permission is missing or a hotkey was refused. No
-window is the pass. If one appears, stop and read [docs/permissions.md](../../../docs/permissions.md)
-before granting anything by hand — a row that is listed and switched on can still be denied.
+The app opens its settings window **only** when a permission is missing or a hotkey was refused, so no
+window is the pass — on a screen that is awake and unlocked
+([environment.md](../../../docs/environment.md#the-screen-is-locked-or-asleep)). If one appears, stop
+and read [permissions.md](../../../docs/permissions.md) before granting anything by hand: a row that
+is listed and switched on can still be denied.
 
 ### 5. Test
 
@@ -143,188 +121,134 @@ Check what the filter would hint, against at least two apps, one Chromium-based:
 bin/axshot --dump --bundle <some.bundle.id> | head -30
 ```
 
-Read the list, not the count. You want regions a person would ask for — a sidebar, a message, a
-panel — and not a run of near-identical boxes at increasing depth, which is the nesting collapse
-failing, and not an empty list on a window with obvious content, which is the tree never being
-exposed.
+Read the list, not the count. You want regions a person would ask for — a sidebar, a message, a panel
+— and not a run of near-identical boxes at increasing depth, which is the nesting collapse failing, and
+not an empty list on a window with obvious content, which is the tree never being exposed or
+[the window being covered](../../../docs/environment.md#a-window-the-walk-does-not-see).
 
-Everything past this point takes the user's keyboard, so everything past this point starts behind
-the gate — immediately before each burst, not once for the test:
-
-```bash
-./scripts/wait-idle.sh
-```
-
-It returns as soon as nobody has typed for three seconds. Non-zero means they are still working: do
-not retry past it and do not take the foreground anyway — park (`🚙 `), say the keyboard is busy, and
-let them name the moment.
-
-Then bracket the burst, so the user can see which windows are this session's and gets the foreground
-back when it ends:
-
-```bash
-bin/axshot --driving on
-# activate, drive, capture
-# end the session, then:
-bin/axshot --driving off
-```
-
-`off` re-activates whatever had the foreground when `on` ran. It belongs at the end of every burst,
-not once at the end of the test, and the end of a burst is the last posted key — not the end of the
-script. Waiting on the session, reading its outcome and measuring what it captured all belong after
-`off`; see
-[docs/testing.md](../../../docs/testing.md#saying-an-agent-has-the-foreground), which is also why a
-trap is the failure net here rather than the ordinary exit.
+Everything past this point takes the user's keyboard, so every burst is bracketed the way AGENTS.md
+"Driving the app on a live machine" lays out: `./scripts/wait-idle.sh` immediately before each burst
+rather than once for the test, then `bin/axshot --driving on`, the keystrokes, and
+`bin/axshot --driving off`. A non-zero gate is not retried past — park at `🚙 `, say the keyboard is
+busy, and let the user name the moment.
 
 Then drive a real capture through the hotkey, not just the CLI, and confirm three things: a file
-appeared with the timestamped name; its pixel dimensions are twice the reported rect on a Retina
-display; and **the overlay is not in the image**. That last one is the regression that would
+appeared with the timestamped name; its pixel dimensions are twice the rect of the region aimed at, on
+a Retina display; and **the overlay is not in the image**. That last one is the regression that would
 otherwise ship quietly.
 
 After any change to the filter, the hint alphabet or the drawing, photograph the overlay itself
-([docs/testing.md](../../../docs/testing.md#seeing-the-overlay)) and look at hint density and
+([seeing.md](../../../docs/seeing.md#photographing-the-overlay)) and look at hint density and
 placement.
 
 ### 6. Iterate without releasing
 
-Edit, re-run `./build.sh`. The lock stays held, so a debugging loop costs one acquire and one
-release however many rounds it takes.
+Edit, re-run `./build.sh`. The lock stays held, so a debugging loop costs one acquire and one release
+however many rounds it takes.
 
 ### 7. Hand it to the user if it is visible
 
 **Do not release yet if the change is one the user sees or touches** — the overlay, the settings
-window, the menu, the hotkeys, focus, permission prompts. Releasing restores the app they had, so
-the moment the lock drops there is nothing of the change left to try. Keep it held, tell them this
-branch is live and what to look at, and wait for their answer. That wait is this skill's own, not a
-gate on the next one: `ship` runs when the user says to ship, tested or not, and their word is the
-answer this step was waiting for. Stay `🔒 ` while waiting — the lock is held and the installed app
-is this branch's build, which is exactly what the prefix says.
-
-Iterate under the same lock until they are happy, then release.
+window, the menu, the hotkeys, focus, permission prompts. Releasing restores the app they had, so the
+moment the lock drops there is nothing of the change left to try. Keep it held, tell them this branch
+is live and what to look at, stay `🔒 `, and iterate under the same lock until they are happy. That
+wait is this step's own and gates nothing else: the user saying to ship is the answer it was waiting
+for, whether or not they looked.
 
 ### 8. Release
 
-Swap the prefix to `🔓 ` before releasing. Do not report this.
+Swap the prefix to `🔓 `, then:
 
 ```bash
 ./scripts/axshot-test-lock.sh release
 ```
 
-Restores the snapshot, puts the app back the way it was found — running or not — and drops the lock.
-Do this as soon as the last capture is done; do not hold it while writing up results or shipping.
+It restores the snapshot, puts the app back the way it was found — running or not — and drops the
+lock. Do it as soon as the last capture is done; do not hold the lock while writing up results or
+shipping.
 
-"The way it was found" can be behind `origin/main`. The snapshot is the app as of the acquire, so a
-release after something else landed installs an app older than what has shipped. It heals on the next
-ship by anyone — step 6 of `ship` builds from the main checkout, which by then holds everything that
-accumulated — and outlives that only while a tested branch sits at `📦 ` and nobody ships. Releasing
-is not what puts a change on the user's machine; shipping is, and neither the ref moving nor the lock
-dropping is a build.
+"The way it was found" can be behind `origin/main`: the snapshot is the app as of the acquire, so a
+release after something else landed installs an app older than what has shipped. The next ship by
+anyone heals it, since `ship` step 6 builds from the main checkout. Releasing is not what puts a change
+on the user's machine; shipping is.
 
-Then retitle: `📦 ` if the change passed and is worth shipping without re-testing, otherwise drop the
-prefix. Do not report this.
+Then retitle: `📦 ` if the change passed and is worth shipping without re-testing; otherwise the prefix
+for what comes next, `⏳ ` to keep working or `🚙 ` if it waits on the user.
 
-If the installed app changed underneath you, release refuses rather than discarding it, and offers
-`--keep` (drop the lock, leave the app alone) or `--force` (restore anyway). That happens when
-someone built on main mid-test. Pick `--keep` if that build was intentional; the snapshot path is
-printed either way.
+Release refuses rather than guess in two cases:
 
-It also refuses when the *snapshot* is the thing that is unusable: the acquire prints "live app
-snapshotted" whether or not the copy behind it finished, and only the release finds out. `--keep` is
-the answer there and `--force` is not -- there is nothing to restore, and the live app is a real
-build where the snapshot is a half-copied one. What it costs is the app the user had, which the next
-install replaces; the report says the lock is open and the app updates then, and nothing about the
-snapshot.
+- **The installed app changed underneath the lock** — someone built on main mid-test. `--keep` drops
+  the lock and leaves that build, the answer if it was intentional; `--force` restores the snapshot
+  anyway. The snapshot path is printed either way.
+- **The snapshot is unusable.** The acquire prints "live app snapshotted" whether or not the copy
+  behind it finished, and only the release finds out. `--keep` is the answer and `--force` is not:
+  there is nothing to restore, and the live app is a real build where the snapshot is half of one. The
+  branch's build stays installed until the next install replaces it, so the report says the lock is
+  open and the app updates then, and nothing about the snapshot.
 
 ### 9. Ship
 
-Release first, then follow the `ship` skill.
+`ship` runs when the user asks for it, and not before.
 
 ## Hazards
 
-- **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15
-  seconds — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do
-  not start one and walk away. End a driven one at the last capture rather than letting it run while
-  the driver reads its output: everything the user types meanwhile lands in the overlay.
-- **The foreground is the user's too.** Every drive brings a window forward, and whatever the last
-  activation left in front is where their next keystroke lands. `--driving off` puts it back; a burst
-  that ends without it hands them an app nobody chose.
-- **The keyboard is the user's too.** They are typing in another app while this runs, and a burst
-  begun mid-sentence steals the letter they were on and lands the rest in their editor. Nothing here
-  activates an app, opens the overlay or posts a key without `./scripts/wait-idle.sh` returning
-  first. It gates the start of a burst, not the keys within one — the reason is in
-  [docs/testing.md](../../../docs/testing.md#waiting-for-the-keyboard).
-- **The clipboard is the user's too.** Anything that drives a clipboard path overwrites whatever
-  they were carrying, and it is not restored by releasing the lock. Ask what is on it before
-  planning around it — `osascript -e 'clipboard info'` names the classes and touches nothing. Plain
-  text is the case `pbpaste` before and `pbcopy` after puts back. Anything else is not: a copied
-  image arrives in a dozen flavours at once and nothing on the command line writes them all back, so
-  no build that writes the clipboard can be driven until the user has moved on. Everything short of
-  the write still can: a scratch copy of the source with the pasteboard call redirected to a file,
-  signed into a bundle the way the comparison build in
-  [docs/testing.md](../../../docs/testing.md#the-paths-that-need-no-interaction) is and put in the
-  live slot with `axshot-test-lock.sh install <bundle>` under the held lock, drives the key, the
-  session and anything the path draws, and `./build.sh` puts the real build back for the hand-off.
-  The write itself is the result to report as untested, not a reading that licenses overwriting what
-  `clipboard info` just named.
-- **A capture takes whatever is frontmost.** Activate the app you mean — before every run, not once
-  per test — or you will measure the wrong window and conclude the filter is broken.
+- **The overlay owns the keyboard while it is up.** A stuck session releases itself after 15 seconds
+  — 30 from the moment a hint holds a region under the mask — and Escape cancels, but do not start one
+  and walk away.
+- **The clipboard is the user's, and releasing does not restore it.** Ask what is on it before driving
+  anything that writes it;
+  [driving.md](../../../docs/driving.md#leaving-the-machine-as-you-found-it) has what can be put back
+  and how to test a clipboard path without the write.
 - **Some paths spend the user's money.** The transcription key sends a picture to the Claude API on
   every press that is not served from the held region's cached answer, and each one is billed to the
   key in `~/.config/axshot/.env`. Drive it deliberately, on a small region, and reuse one session's
   answer rather than re-running the whole path to check a later step.
-- **Never change the bundle identifier or the signing certificate to make a test pass.** Either
-  costs a full re-grant of both permissions, which needs the user.
-- **`build.sh` installs unless told `--no-install`.** It is not a compile step you can take before
-  acquiring: it writes the live slot, so a build run first puts your bundle in `/Applications`
-  *outside* the lock, and the acquire that follows snapshots that instead of the app the user had.
-  Take the lock first, even for a build you only meant to compile, or use `--no-install`. Once that
-  has happened the snapshot cannot restore what was lost; put the app back with a second lock cycle
-  that builds the source it should be running — `git show main:axshot.swift > axshot.swift`,
-  `./build.sh`, restore the branch's file, then `release --keep` so the release does not undo it.
-- **A worktree older than the queue releases without handing over.** The waking is done by the
-  *holder's* copy of `axshot-test-lock.sh`; a session on a branch from before it drops the lock
-  silently, and whoever is queued sleeps through their turn until some other release signals. If a
-  wait outlives the release that should have ended it, `status` shows the lock free with the queue
-  still standing — rebase that worktree on main.
-- **Do not build on main while another worktree holds the lock.** `install` refuses, so the build
-  succeeds and the install does not — read the output rather than assuming it landed.
+- **Never change the bundle identifier or the signing certificate to make a test pass.** Either costs
+  a full re-grant of both permissions, which needs the user.
+- **`build.sh` installs unless told `--no-install`, and with no lock held nothing refuses it.** A build
+  run before acquiring puts this branch in `/Applications` *outside* the lock, and the acquire that
+  follows snapshots that instead of the app the user had. Take the lock first, or pass `--no-install`.
+  Once it has happened the snapshot cannot restore what was lost: put the app back with a second lock
+  cycle that builds the source it should be running — `git show main:axshot.swift > axshot.swift`,
+  `./build.sh`, restore the branch's file — then `release --keep`, so the release does not undo it.
+- **A build while another session holds the lock compiles and does not install.** `install` refuses;
+  read the output rather than assuming it landed.
+- **A worktree older than the queue releases without handing over.** The wake comes from the
+  *holder's* copy of the lock script, so a session on a branch from before the queue drops the lock
+  silently, and whoever is queued sleeps through their turn until some other release signals. `status`
+  showing the lock free with the queue still standing is this; rebase that worktree on main.
 
 ## Stale locks
 
-A lock older than 30 minutes is reported `STALE` by `status`. Breaking it restores the snapshot
-first:
+`status` reports a lock older than 30 minutes as `STALE`, and that is the lock's age and nothing else.
+A holder at step 7 keeps the lock for as long as the user takes to look, which is routinely past half
+an hour, and breaking it pulls the build out from under their hands. Nor is the title `status` prints
+current — it is the one the holder passed to `wait`. Read the live one with `get_session` and the
+session id `status` printed: `🔒 ` on a session that is not running is a hand-off waiting on the user,
+not an abandoned lock, and the answer is to queue behind it.
+
+An abandoned lock is broken with its snapshot restored:
 
 ```bash
 ./scripts/axshot-test-lock.sh break
 ```
 
-`STALE` is the lock's age and nothing else. A holder at step 7 keeps the lock for as long as the user
-takes to look, which is routinely past half an hour, and breaking it pulls the build out from under
-their hands. Nor is the title `status` prints current — it is the one the holder had when it queued.
-Read the live one with `get_session` and the session id `status` printed: `🔒 ` on a session that is
-not running is a hand-off waiting on the user, not an abandoned lock, and the answer is to queue
-behind it.
+Breaking a lock that is *not* stale requires confirming with the user that no test is in flight, then
+`AXSHOT_LOCK_STALE=0 ./scripts/axshot-test-lock.sh break`. Never on a hunch — the holder is mid-test.
 
-Breaking a lock that is *not* stale requires confirming with the user that no test is in flight,
-then `AXSHOT_LOCK_STALE=0 ./scripts/axshot-test-lock.sh break`. Never on a hunch — the holder is
-mid-test.
-
-`break` recovers the lock and not the queue. A ticket whose waiting session is gone is pruned on
-sight, but one whose recorded pid has been reused — across a reboot, say — looks alive forever, and
-while it sits at the head every `acquire` is refused and every `wait` blocks behind a session that
-does not exist. Clear it with:
+`break` recovers the lock and not the queue. A ticket whose waiting session is gone is pruned on sight,
+but one whose recorded pid has been reused — across a reboot, say — looks alive forever, and while it
+sits at the head every `acquire` is refused and every `wait` blocks behind a session that does not
+exist. Read the list, then clear it:
 
 ```bash
 ./scripts/axshot-test-lock.sh dequeue
 ```
 
-It wakes the sessions it clears, so each one exits saying its ticket was cleared rather than sleeping
-on a queue that is gone — but they do lose their place, so read the list it prints before running it.
+It wakes the sessions it clears, so each exits saying its ticket was cleared rather than sleeping on a
+queue that is gone — but they lose their place.
 
-If the acquire itself was interrupted, the snapshot inside the lock is half a copy. `release` and
-`break` both say so and leave the live app alone rather than putting a broken bundle where the
-working one was; `release --keep` is how that lock comes off.
-
-If everything is wedged, the snapshot is a plain bundle at
-`.claude/axshot-test.lock/Axshot.app.pre`; copy it over `/Applications/Axshot.app` by hand and
-delete the lock directory.
+If the acquire itself was interrupted, the snapshot inside the lock is half a copy; `release` and
+`break` both say so and leave the live app alone, and `release --keep` is how that lock comes off. If
+everything is wedged, the snapshot is a plain bundle at `.claude/axshot-test.lock/Axshot.app.pre` in
+the main checkout: copy it over `/Applications/Axshot.app` by hand and delete the lock directory.

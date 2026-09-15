@@ -235,10 +235,8 @@ Given arguments, the same binary is a CLI instead of the app. `bin/axshot` links
     bin/axshot --out /tmp/x.png   # capture to an exact path
 
 `axshot.swift`'s header comment is the full reference: every option, and why each part works the way
-it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, with guides on the
-[settled decisions](docs/decisions.md), the [region filter](docs/filter.md),
-[accessibility](docs/accessibility.md), [permissions](docs/permissions.md),
-[testing](docs/testing.md) and [working without a Mac](docs/cloud-sessions.md).
+it does. [AGENTS.md](AGENTS.md) is the entry point for working on the code, and indexes the guides
+in [docs/](docs/).
 
 ## Permission
 
@@ -269,8 +267,8 @@ that stops it coming back. To set that up in advance instead:
 
     AXSHOT_KEYCHAIN_PASSWORD='…' ./create-signing-cert.sh
 
-`AXSHOT_ADHOC=1 ./build.sh` skips signing entirely — no dialog, but both permissions then have to be
-granted again after every build.
+`AXSHOT_ADHOC=1 ./build.sh --no-install` skips signing entirely — no dialog, and no install either: an
+ad-hoc bundle satisfies neither grant, so the installer refuses it.
 
 A command line run re-spawns itself with its responsibility disclaimed, so TCC judges `axshot`
 rather than the terminal, and one pair of grants serves both the app and the shell.

@@ -20,22 +20,32 @@ Two things follow, and both cost a full re-grant of both permissions:
 - **Changing the signing certificate breaks it.** The leaf hash is the other half. Deleting and
   recreating the identity — to rename it, or because the key was lost — is a new certificate.
 
-Editing the source and recompiling is free — the requirement still matches and the grants hold,
-which is worth confirming after any change that touches signing. This is the entire reason
-`build.sh` signs with a stable identity rather than letting the linker sign ad-hoc, where the
-requirement pins a code hash that changes with every compile.
+Editing the source and recompiling is free: the requirement still matches and the grants hold, which
+is worth confirming after any change that touches signing. That is the whole reason `build.sh` signs
+with a stable identity rather than ad-hoc, where the requirement pins a code hash that changes with
+every compile.
 
-## The CLI shares the app's grants, by construction
+## One binary, two identities
 
-Axshot's CLI is the app's own binary, invoked from inside `Axshot.app`, and it re-spawns itself with
-its responsibility disclaimed — so TCC resolves it to the bundle and the CLI inherits the app's
-grants. `bin/axshot --dump` works as soon as the app is granted, and stops the moment the bundle's
-identity changes.
+The CLI is the app's own executable, reached through `bin/axshot`, a symlink into the bundle — the
+same bytes, and not the same identity to everything that asks:
 
-Neither half of that is incidental. Without the disclaim, a run from a terminal is judged as the
-terminal, and inherits whatever the terminal happens to have — which is how a check can pass in a
-shell and fail everywhere else. Outside the bundle it would be a separate client with separate
-grants. Keep the CLI inside the bundle and keep the disclaim, or the two stop agreeing.
+- **To Foundation, the CLI has no bundle.** dyld reports the symlink rather than what it points at,
+  so on the command line `Bundle.main` is `bin/` and carries no identifier. Anything that would ask
+  the bundle who this is — the preferences domain, the identifier handed to `tccutil` — names what it
+  wants instead.
+- **To TCC, the CLI is the app.** A run re-spawns itself with its responsibility disclaimed, so TCC
+  resolves it to the bundle and it inherits the app's grants: `bin/axshot --dump` works as soon as the
+  app is granted, and stops the moment the bundle's identity changes. Without the disclaim, a run from
+  a terminal is judged as the terminal and inherits whatever it has — which is how a check passes in a
+  shell and fails everywhere else. Keep the CLI inside the bundle and keep the disclaim.
+- **A loose binary is nobody.** Signed with the same identity, it still answers `trusted=false`
+  however it was built: the requirement names the bundle identifier, and a bare Mach-O carries none.
+  A second build that has to be trusted, such as a comparison build, goes inside a copy of
+  `Axshot.app`.
+
+[Asking who the process is](testing.md#asking-who-the-process-is) is how to see which identity a run
+picked up.
 
 ## Three ways granting looks like it failed when it did not
 
@@ -74,6 +84,10 @@ again. Passing the login password to `create-signing-cert.sh` sets this up front
 The key's label in that dialog comes from the filename `security import` read, which is why the
 script writes the key to a file named after the identity. A key already in the keychain cannot be
 relabelled — only replaced, which means a new certificate, which means re-granting both permissions.
+`security dump-keychain` lists passwords and not keys, so the dialog is the only readout of that
+label.
 
-An unattended build must not block on this dialog. `build.sh` waits, then falls back to ad-hoc; if
-you are scripting a build that must never prompt, use `AXSHOT_ADHOC=1`.
+A build sitting at `==> Signing as` is waiting on this dialog — a `SecurityAgent` process — and not
+compiling. `build.sh` gives it two minutes, then falls back to ad-hoc, which `install` refuses. A
+scripted build that must never prompt runs `AXSHOT_ADHOC=1 ./build.sh --no-install`, and installs
+nothing.
