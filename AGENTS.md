@@ -115,6 +115,7 @@ putting the first prefix on is part of the first response.
 | `📦 ` | tested, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
 | `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a look at a build already in front of them |
+| `⏲️ ` | waiting on a task scheduled for later — nothing to do until it fires |
 | `🪦 ` | dead end — kept for the findings, not to resume |
 | `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
 
@@ -125,6 +126,11 @@ and ship prefixes; the rest are set by hand, and nothing reconciles a title agai
 A response that closes on something for the user to do — test it, look at it, decide — is a park, and
 `🚙 ` goes on before it. A hands-on look at an installed build is the exception: the lock is held for as
 long as they look, so it stays `🔒 ` until there is nothing left to hold.
+
+Waiting on the clock is a stage of its own. `⏲️ ` is for a session whose next move is a task
+scheduled for later — a wake-up, a cron run, a routine — with nothing to do until it fires. Where
+that response also needs something from the user it is a park: `🚙 ` takes precedence, since a
+person can act and the clock cannot. A held lock outranks both.
 
 **Ask which session this is before renaming one.** `get_session "self"` is the only answer, and a fork
 changes it: a forked session carries the transcript, including the id read earlier in it, under a new
