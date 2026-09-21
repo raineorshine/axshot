@@ -12,7 +12,7 @@ and read `origin/main` before quoting a default or a number to the user.
 
 ## Guides
 
-This file is read by every session, so it holds what every session needs and stays under 200 lines.
+This file is read by every session, so it holds what every session needs and stays under 300 lines.
 Anything read only when working on one area is a guide, with a one-line claim and a link left here.
 
 - [docs/decisions.md](docs/decisions.md) — what was argued out and measured about the walk, the
