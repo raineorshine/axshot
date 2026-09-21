@@ -300,6 +300,12 @@ instant the process is. A script that drives `menu bar 2` in the same breath fai
 `Invalid index (-1719)`, which reads exactly like the change having broken the menu bar item. Wait a
 second and send it again.
 
+**The same error with nothing to wait for**: the install only relaunches an app that was *running*
+when the lock snapshotted it. Take the lock while the user has quit Axshot and every install leaves
+it stopped, so retrying the menu bar forever is waiting on a process that is not there. `pgrep -f
+'/Applications/Axshot.app/Contents/MacOS/axshot'` separates the two cases, and `open
+/Applications/Axshot.app` is the fix for the second.
+
 - **Keys go to whatever is frontmost at that moment**, not to the process the previous line addressed —
   a window can be open and not focused, and the key then lands in the user's editor. Front the app in
   the same script and confirm it took:

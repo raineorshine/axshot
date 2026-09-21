@@ -149,6 +149,18 @@ run.
 **If the fast-forward fails** on local changes, leave them — never `checkout --` someone's work away.
 Whoever fast-forwards next picks up every commit that accumulated.
 
+**A branch holding commits the main checkout also has diverges it by being shipped.** Step 4 rewrote
+them into one, so the local `main` is now ahead by the originals and behind by the squash, and the
+fast-forward refuses although nothing is unshipped —
+`git -C "$MAIN" diff HEAD origin/main` shows only this ship's own files. The trap is the line after
+it: `build.sh` in that checkout then compiles a tree without the change and installs it, reporting
+success. Install from the worktree instead, which is what was pushed, and leave the main checkout's
+ref to whoever resets it:
+
+```bash
+./build.sh
+```
+
 ### 7. Correct the title if the ship did not land
 
 The push in step 5 is what counts as shipped, whatever step 6 managed; `🚀 ` then stays through the

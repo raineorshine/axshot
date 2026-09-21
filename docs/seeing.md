@@ -39,6 +39,30 @@ own Screen Recording grant — then send Escape:
     screencapture -x -o -R 0,34,1470,922 /tmp/overlay.png
     osascript -e 'tell application "System Events" to key code 53'
 
+## Photographing one window
+
+A window is captured by its id, never by the rectangle it reports: `screencapture -l<id>` crops
+exactly the window and follows it to whichever display it is on, where a `-R` built from the window's
+own `position` and `size` came back showing a different part of the screen entirely — those numbers
+are in the space of the display the window is on, and `-R` reads the main one.
+
+    PID=$(pgrep -f '/Applications/Axshot.app/Contents/MacOS/axshot' | head -1)
+    swift -e "
+    import CoreGraphics
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as! [[String: Any]]
+    for w in list {
+      guard (w[kCGWindowOwnerPID as String] as? Int) == $PID else { continue }
+      guard let n = w[kCGWindowNumber as String] as? Int else { continue }
+      guard let b = w[kCGWindowBounds as String] as? [String: Any] else { continue }
+      guard (b[\"Height\"] as? Double ?? 0) > 100 else { continue }
+      print(n)
+    }"
+
+The height guard drops the status item's own window, which is in the list under the same pid. Build
+that snippet with `guard … else { continue }` lines rather than a `for … where` with a trailing `if`:
+interpolating a pid into the `where` clause leaves `== {` when the pid comes back empty, and swift
+then reports six errors about `w` not being in scope instead of the one thing that was wrong.
+
 ## Measuring instead of looking
 
 **Anything smaller than the overlay** — the corner thumbnail, a badge, a bracket — does not survive a

@@ -41,6 +41,16 @@ through underneath it.
 The other half of naming is that a reader takes the *title* and a script looks up by it, so a label
 alone leaves the name reading `missing value` — which is why the controls here set both.
 
+## A label with no width sets the window's
+
+The settings window is its content's size, so a text field with no width anchor is not laid out
+inside the window — it decides how wide the window is. Lengthening one sentence in an aside took the
+window from 500 to 540 and left the line touching both edges, with nothing in the diff about layout.
+Any line of prose gets a width constraint at the window's content width, plus
+`lineBreakMode = .byWordWrapping` and a `maximumNumberOfLines`, so it wraps where the rows end and
+the sentence can be rewritten later without moving the window. The same default is why the folder
+path is pinned: a row's own contents stretch it past both edges given the chance.
+
 ## The system colours are fills, not text
 
 `.systemGreen` and `.systemOrange` are tuned to be seen on a control rather than read as an 11pt
