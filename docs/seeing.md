@@ -145,3 +145,10 @@ shape before it measures it. A macOS window corner is a continuous curve rather 
 `CALayer`'s `cornerCurve = .continuous` draws it and no `NSBezierPath` does — so least squares through
 its edge settles on a radius that is nothing in particular, with a residual small enough to read as
 agreement.
+
+**A display's corner cannot be measured this way at all.** A rounded display photographs square: the
+mask is applied after the framebuffer, so the curve is not in the capture and no comparison against it
+can be sharp. The number exists anyway — `SLSDisplayGetCornerRadii` in SkyLight reports it, in points
+of the display's current mode, and `DisplayCorner` in `axshot.swift` binds it weakly and documents the
+signature it was given, there being no header. That is the shape of the answer when a capture cannot
+hold the thing being measured: find what the system already knows rather than photographing harder.

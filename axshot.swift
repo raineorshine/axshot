@@ -601,11 +601,13 @@
 // posts keystrokes onto the keyboard a person is sitting at and brings windows forward that nobody
 // asked for, and from the outside that is indistinguishable from the machine doing it by itself. So
 // a burst brackets itself: --driving on before it takes the foreground, --driving off when it lets
-// go. While it holds, the running app draws a border around every screen, in the pink of the hint
+// go. While it holds, the running app draws a glow around every screen, in the pink of the hint
 // style -- the plate colour picked for turning up in the fewest interfaces, which is the property
-// wanted here too. Letting go puts the foreground back where the burst found it. It marks the burst
-// and not the test: a build being tried by hand is the user's own session, and a border up for an
-// hour is a colour nobody sees by the second look.
+// wanted here too. A point of the screen's own edge lit, then forty-eight points of falloff inward:
+// a border is a line drawn around the screen and reads as one, where a glow reads as the edge being
+// lit and is the thing that can be left up. Letting go puts the foreground back where the burst
+// found it. It marks the burst and not the test: a build being tried by hand is the user's own
+// session, and a glow up for an hour is a colour nobody sees by the second look.
 //
 // The screen and not the frontmost window, because what a burst has taken is the machine. A band
 // around one window says the drive is happening in there, and the next thing a burst does is
@@ -621,10 +623,11 @@
 // than by being hidden around each shutter -- a band at the screen's edge is inside any capture that
 // reaches it, and the process photographing is not always the one holding the border. A frame nobody
 // turns off goes out after two minutes and gives the foreground back, since the session that would
-// have turned it off is the one that can die mid-burst. Its corners are square: the 16pt continuous
-// curve the band used to carry was measured against a window, a display's corner is a different
-// shape and one nothing reports, and where a panel rounds it the panel's own mask clips the band --
-// which is a better relationship than a guessed curve competing with it.
+// have turned it off is the one that can die mid-burst. Its corners are the display's own: the band
+// used to be square there, because a display's corner is a different shape from a window's and
+// nothing public reports it -- `SLSDisplayGetCornerRadii` in SkyLight does, weakly bound, and a
+// display that reports nothing rounded keeps the square band it had. A square band on a rounded
+// panel is cut at each corner by the panel, which breaks it exactly where the eye follows it round.
 //
 // Exit codes (command line only): 0 captured or copied, 2 not trusted, 3 no target app, 4 no
 // candidate regions, 6 no window, 11 cancelled, 12 capture failed, 13 nothing to copy. A capture that failed for want of Screen
@@ -5681,7 +5684,10 @@ final class DriveFrame {
     window.setFrame(area, display: true)
     view.frame = CGRect(origin: .zero, size: area.size)
     view.origin = area.origin
-    view.boxes = screens.map { $0.frame }
+    // The corner is read here rather than cached: the window server answers in points of the
+    // display's current mode, so a change of scaled resolution changes it -- and that arrives as the
+    // same screen-parameters notification that moves the edge.
+    view.boxes = screens.map { DriveFrameView.Box(rect: $0.frame, cornerRadius: DisplayCorner.radius(of: $0)) }
   }
 
   private func close() {
@@ -5694,36 +5700,92 @@ final class DriveFrame {
   }
 }
 
-/// The band itself: one square-cornered frame per screen, drawn as layers.
+/// The glow itself: one frame per screen, cornered like the screen it is on, drawn as layers.
 ///
-/// Square, because a screen is not a window. The band used to trace whatever window was frontmost,
-/// and macOS rounds a window with a continuous corner -- a squircle, fuller through the diagonal
-/// than a circle of the same radius -- which no `NSBezierPath` draws; that is what the layers and
-/// their `cornerCurve = .continuous` were for, at a radius of 16 measured against a real window row
-/// by row. A display's corner is a different shape and not one anything reports. Where the panel
-/// rounds it, the panel's own mask clips the band, and a curve guessed at here would compete with
-/// that mask rather than match it -- so the band states the bounds it knows and lets the corner
-/// belong to the hardware. The layers stay because the inward falloff is still drawn as concentric
-/// rings, and the radius measurement is kept above in case a band ever has to follow a window again.
+/// macOS rounds with a continuous corner -- a squircle, fuller through the diagonal than a circle of
+/// the same radius -- which no `NSBezierPath` draws. `cornerCurve = .continuous` is that curve and a
+/// layer is the only thing that offers it, which is why the band is layers rather than a path.
+///
+/// The radius is the display's own, from `DisplayCorner`, and not the 16 that was measured against a
+/// window row by row when this band still traced the frontmost one -- a screen is not a window, and
+/// the numbers are nothing like each other. A display that reports no corner, which is every
+/// external monitor, keeps the square band. The layers earn their keep twice over: the inward
+/// falloff is drawn as concentric rings, each of which is the same curve again at `radius - inset`,
+/// square once the inset runs past the radius, which is what insetting a rounded rect that far
+/// actually leaves.
 ///
 /// Not an accessibility element and deliberately so: it is a mark drawn over somebody else's window
 /// rather than a control, it answers no key, and a borderless window sitting over every app is the
 /// last thing a reader should have to step through to get past. The overlay is out of the tree for
 /// the same reason and says as much in the header.
+/// The radius macOS rounds a display's corners to, in points, read from the window server.
+///
+/// There is no public API for it. `NSScreen` has no corner property, a full-screen window reports
+/// every private radius as zero because the rounding is the window server's rather than AppKit's,
+/// and it cannot be measured off a capture: a rounded display photographs square, since the mask is
+/// applied after the framebuffer. `SLSDisplayGetCornerRadii` in SkyLight is the one thing that
+/// answers.
+///
+/// The signature is from the instruction stream, there being no header: the display id in `x0` and
+/// four `double *` out parameters in `x1`-`x4`, each written only if non-null, returning a `CGError`
+/// -- `kCGErrorFailure` for a display id the window server does not know. Calling it with fewer than
+/// four pointers crashes; it stores through whatever the argument registers happen to hold.
+///
+/// The four arrive unlabelled and which is which corner is not recoverable, so the largest is taken
+/// and drawn to all four: a panel that rounds one corner rounds all four symmetrically, and where
+/// the system leaves one unmasked the hardware cuts it anyway. The answer is in points of the
+/// display's *current mode*, so it changes with the scaled resolution and is read again on every
+/// layout rather than cached. Weakly bound, and failure is ordinary: a macOS without the symbol, or
+/// a display the call refuses, reports nothing and the band stays square.
+enum DisplayCorner {
+  private typealias GetCornerRadii = @convention(c) (
+    UInt32, UnsafeMutablePointer<Double>, UnsafeMutablePointer<Double>,
+    UnsafeMutablePointer<Double>, UnsafeMutablePointer<Double>
+  ) -> Int32
+
+  private static let getCornerRadii: GetCornerRadii? = {
+    guard let skyLight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY),
+          let symbol = dlsym(skyLight, "SLSDisplayGetCornerRadii") else { return nil }
+    return unsafeBitCast(symbol, to: GetCornerRadii.self)
+  }()
+
+  static func radius(of screen: NSScreen) -> CGFloat {
+    guard let getCornerRadii,
+          let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+    else { return 0 }
+    var first = 0.0, second = 0.0, third = 0.0, fourth = 0.0
+    guard getCornerRadii(number.uint32Value, &first, &second, &third, &fourth) == 0 else { return 0 }
+    return max(0, CGFloat([first, second, third, fourth].max() ?? 0))
+  }
+}
+
 final class DriveFrameView: NSView {
-  /// The solid band on the screen's own edge.
-  private static let band: CGFloat = 4
-  /// The shadow cast inward from it, as concentric borders rather than as a blur. A blurred shadow
+  /// One screen's band: where it goes and how the system rounds it.
+  struct Box: Equatable {
+    let rect: CGRect
+    let cornerRadius: CGFloat
+  }
+
+  /// The rim: the screen's own edge, lit. A point of it, not four -- four at full strength is a
+  /// line drawn around the screen and reads as one, where a point under a glow reads as the edge
+  /// itself being lit, which is what can be left up for the length of a burst.
+  private static let band: CGFloat = 1
+  private static let bandAlpha: CGFloat = 0.85
+  /// The glow cast inward from it, as concentric borders rather than as a blur. A blurred shadow
   /// needs a path to be cast from and the only exact one here is a curve no path can hold, so the
   /// falloff is drawn out of the same curve instead: each step is a layer, so every ring is the
-  /// window's corner again rather than an approximation of it.
-  private static let steps = 16
+  /// display's corner again rather than an approximation of it. One ring per point, each at an
+  /// exact alpha, so the profile across the glow is stated rather than being whatever a blur
+  /// radius produces; finer than a point buys nothing and costs a layer.
+  private static let steps = 48
   private static let step: CGFloat = 1
+  /// Where the glow leaves the rim, before the window's own half.
+  private static let peak: CGFloat = 0.5
 
   /// The frame window's own origin, so a box in screen coordinates can be drawn in view ones.
   var origin = CGPoint.zero
   /// One box per screen, in screen coordinates.
-  var boxes: [CGRect] = [] {
+  var boxes: [Box] = [] {
     didSet { if boxes != oldValue { place() } }
   }
 
@@ -5740,17 +5802,22 @@ final class DriveFrameView: NSView {
   private func makeBand() -> (edge: CALayer, glow: [CALayer]) {
     let pink = HintStyle.pink.line
     let edge = CALayer()
-    edge.borderColor = pink.cgColor
+    edge.borderColor = pink.withAlphaComponent(Self.bandAlpha).cgColor
     edge.borderWidth = Self.band
+    edge.cornerCurve = .continuous
     layer?.addSublayer(edge)
     var glow: [CALayer] = []
     for i in 0..<Self.steps {
       let ring = CALayer()
-      // Quadratic, so the shadow leaves the band quickly and then trails off, which is what an inset
-      // shadow looks like and what a linear ramp reads as a stack of rings instead.
-      let fade = pow(1 - CGFloat(i) / CGFloat(Self.steps), 2)
-      ring.borderColor = pink.withAlphaComponent(0.34 * fade).cgColor
+      // Past quadratic, so the glow leaves the rim quickly and then trails off, which is what light
+      // falling away looks like and what a straight ramp reads as a stack of rings instead. Sampled
+      // at the middle of each ring, so the first is a step down from the rim rather than a second
+      // copy of it and the last is a step above nothing -- a glow ending at exactly zero ends
+      // invisibly either way.
+      let fade = pow(1 - (CGFloat(i) + 0.5) / CGFloat(Self.steps), 2.2)
+      ring.borderColor = pink.withAlphaComponent(Self.peak * fade).cgColor
       ring.borderWidth = Self.step
+      ring.cornerCurve = .continuous
       layer?.addSublayer(ring)
       glow.append(ring)
     }
@@ -5775,13 +5842,18 @@ final class DriveFrameView: NSView {
         band.glow.forEach { $0.isHidden = true }
         continue
       }
-      let rect = boxes[index].offsetBy(dx: -origin.x, dy: -origin.y)
+      let box = boxes[index]
+      let rect = box.rect.offsetBy(dx: -origin.x, dy: -origin.y)
       band.edge.isHidden = false
       band.edge.frame = rect
+      band.edge.cornerRadius = box.cornerRadius
       for (i, ring) in band.glow.enumerated() {
+        // Concentric: inset by d, the corner is d smaller, and past the radius it is a corner no
+        // longer -- which is what insetting a rounded rect that far actually leaves.
         let inset = Self.band + CGFloat(i) * Self.step
         ring.isHidden = false
         ring.frame = rect.insetBy(dx: inset, dy: inset)
+        ring.cornerRadius = max(0, box.cornerRadius - inset)
       }
     }
   }
