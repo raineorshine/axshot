@@ -16,7 +16,7 @@ running so a test never ends with the user's menu bar app missing.
 
 **None of it needs the user.** The overlay reads posted events, so a shell drives the whole path. Ask
 for a human only when the question is how something *looks* and you have already captured it and
-cannot judge.
+cannot judge. Step 7 is the separate matter of not releasing a visible change out from under them.
 
 This skill is the order and what passes. The mechanics are [testing.md](../../../docs/testing.md) for
 everything that needs no lock, [driving.md](../../../docs/driving.md) and
@@ -127,10 +127,10 @@ not an empty list on a window with obvious content, which is the tree never bein
 [the window being covered](../../../docs/environment.md#a-window-the-walk-does-not-see).
 
 Everything past this point takes the user's keyboard, so every burst is bracketed the way AGENTS.md
-"Driving the app on a live machine" lays out: `./scripts/wait-idle.sh` immediately before each burst
-rather than once for the test, then `bin/axshot --driving on`, the keystrokes, and
-`bin/axshot --driving off`. A non-zero gate is not retried past — park at `🚙 `, say the keyboard is
-busy, and let the user name the moment.
+"Driving the app on a live machine" lays out — the gate immediately before each burst, not once for
+the test. A gate that does not pass parks this step and says the keyboard is busy. **Keep the lock
+while parked**, and stay `🔒 `: releasing puts the user's own app back and costs the whole test, and
+the gate is expected to pass as soon as they stop typing.
 
 Then drive a real capture through the hotkey, not just the CLI, and confirm three things: a file
 appeared with the timestamped name; its pixel dimensions are twice the rect of the region aimed at, on
@@ -164,8 +164,8 @@ Swap the prefix to `🔓 `, then:
 ```
 
 It restores the snapshot, puts the app back the way it was found — running or not — and drops the
-lock. Do it as soon as the last capture is done; do not hold the lock while writing up results or
-shipping.
+lock. Do it as soon as the last capture is done, or as soon as step 7 has been answered where it
+applies; do not hold the lock while writing up results or shipping.
 
 "The way it was found" can be behind `origin/main`: the snapshot is the app as of the acquire, so a
 release after something else landed installs an app older than what has shipped. The next ship by
@@ -205,12 +205,12 @@ Release refuses rather than guess in two cases:
   answer rather than re-running the whole path to check a later step.
 - **Never change the bundle identifier or the signing certificate to make a test pass.** Either costs
   a full re-grant of both permissions, which needs the user.
-- **`build.sh` installs unless told `--no-install`, and with no lock held nothing refuses it.** A build
-  run before acquiring puts this branch in `/Applications` *outside* the lock, and the acquire that
-  follows snapshots that instead of the app the user had. Take the lock first, or pass `--no-install`.
-  Once it has happened the snapshot cannot restore what was lost: put the app back with a second lock
-  cycle that builds the source it should be running — `git show main:axshot.swift > axshot.swift`,
-  `./build.sh`, restore the branch's file — then `release --keep`, so the release does not undo it.
+- **The acquire snapshots whatever is installed, this branch's own out-of-lock build included**, so an
+  install that happened before it cannot be undone by releasing (AGENTS.md "Layout" is the rule). Put
+  the app back with a second lock cycle that builds the source it should be running —
+  `git fetch origin && git show origin/main:axshot.swift > axshot.swift`, `./build.sh`, restore the
+  branch's file — then `release --keep`, so the release does not undo it. That is `origin/main`'s build
+  and not necessarily the one the user had, which is gone; say so.
 - **A build while another session holds the lock compiles and does not install.** `install` refuses;
   read the output rather than assuming it landed.
 - **A worktree older than the queue releases without handing over.** The wake comes from the
@@ -223,9 +223,10 @@ Release refuses rather than guess in two cases:
 `status` reports a lock older than 30 minutes as `STALE`, and that is the lock's age and nothing else.
 A holder at step 7 keeps the lock for as long as the user takes to look, which is routinely past half
 an hour, and breaking it pulls the build out from under their hands. Nor is the title `status` prints
-current — it is the one the holder passed to `wait`. Read the live one with `get_session` and the
-session id `status` printed: `🔒 ` on a session that is not running is a hand-off waiting on the user,
-not an abandoned lock, and the answer is to queue behind it.
+current — it is the one the holder passed to `wait`. Read the live one with the host's own session
+tool (`get_session` in the desktop app) and the session id `status` printed: `🔒 ` on a session that is
+not running is a hand-off waiting on the user, not an abandoned lock, and the answer is to queue
+behind it. With no such tool, treat a `🔒 ` holder as live and queue.
 
 An abandoned lock is broken with its snapshot restored:
 

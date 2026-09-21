@@ -275,7 +275,7 @@ receive it, before reading a beep as a key that was never wired up.
                 -e 'write (the clipboard as «class PNGf») to f' -e 'close access f'
       sips -g pixelWidth -g pixelHeight /tmp/clip.png
 
-### Reproductions
+## Reproductions
 
 Run any reproduction against a build *without* the fix before trusting it. One that passes either way
 is measuring something other than what it was written for, and it goes on passing after the fix for the

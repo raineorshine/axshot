@@ -44,7 +44,17 @@ check or test suite, and a compile is not evidence that a capture still works �
 
 ### 2. Commit all staged and unstaged changes
 
-Generate the message from the diff: Conventional Commits — `feat:`, `fix:`, `docs:` — with a
+Bring the writing level with the change first, so it lands in this ship rather than a follow-up.
+Nothing regenerates any of it:
+
+- **`axshot.swift`'s header comment**, for anything about behaviour — it is the reference for the tool
+  (AGENTS.md's opening).
+- **`README.md`**, for anything a user would notice: the settings window, the hotkeys, how permissions
+  are asked for, the command line, a filter default or a measured number.
+- **`docs/` and the two skills**, where the change made something they say untrue. A doc added to
+  `docs/` is listed by hand in AGENTS.md's "Guides", and nothing notices when it is not.
+
+Then generate the message from the diff: Conventional Commits — `feat:`, `fix:`, `docs:` — with a
 lower-case subject under about 60 characters, and a body that says why rather than what. The body also
 says, each in a line of its own, the two things nothing else will record:
 
@@ -168,15 +178,12 @@ until the session starts something else. Say nothing about it in the response.
 
 ### 8. Post-ship
 
-- If the change altered the settings window, the hotkeys, or how permissions are asked for, check that
-  `README.md` and `docs/` still describe what the app does. Nothing regenerates them.
-- A doc added to `docs/` is listed by hand in AGENTS.md's "Guides", and nothing notices when it is not.
-- If the user confirms this worktree is no longer needed, it and the branch can be removed from the
-  main checkout:
+If the user confirms this worktree is no longer needed, it and the branch can be removed from the main
+checkout:
 
-  ```bash
-  BRANCH=$(git branch --show-current) && MAIN=$(git worktree list | head -1 | awk '{print $1}') && git -C "$MAIN" worktree remove <this-worktree-path> && git -C "$MAIN" branch -d "$BRANCH"
-  ```
+```bash
+BRANCH=$(git branch --show-current) && MAIN=$(git worktree list | head -1 | awk '{print $1}') && git -C "$MAIN" worktree remove <this-worktree-path> && git -C "$MAIN" branch -d "$BRANCH"
+```
 
 ### 9. Extract the learnings
 

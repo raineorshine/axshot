@@ -4,10 +4,11 @@ A macOS menu bar app that finds screenshot regions in the accessibility tree. On
 shell scripts, no dependencies.
 
 **`axshot.swift`'s header comment is the reference for the tool itself** — every option, and the
-reasoning behind each moving part. Read it before changing behaviour; this file does not repeat it.
-It is current as of `origin/main`, not of this worktree's cut, and tuned constants are exactly what
-other sessions re-measure and move: `git fetch` and read `origin/main` before quoting a default or a
-number to the user.
+reasoning behind each moving part. Read it before changing behaviour and update it with the change;
+this file does not repeat it, and nothing regenerates it. `README.md` is the same obligation for
+anything a user would notice. The header comment is current as of `origin/main`, not of this
+worktree's cut, and tuned constants are exactly what other sessions re-measure and move: `git fetch`
+and read `origin/main` before quoting a default or a number to the user.
 
 ## Guides
 
@@ -26,7 +27,8 @@ Anything read only when working on one area is a guide, with a one-line claim an
 - [docs/testing.md](docs/testing.md) — checking a change with no lock and no keyboard: region-list
   diffs against `origin/main`, scratch harnesses, probes, reading a crash, sandboxing the lock script.
 - [docs/driving.md](docs/driving.md) — driving the installed app while the user works: the keyboard
-  gate, the driving border, what osascript cannot post, aiming at a region, the settings window.
+  gate, the driving border, what osascript cannot post, aiming at a region, the settings window, and
+  what makes a reproduction worth trusting.
 - [docs/seeing.md](docs/seeing.md) — photographing and measuring what is on screen, transitions
   included, and what a capture does not prove.
 - [docs/environment.md](docs/environment.md) — failures that are the machine rather than the change:
@@ -36,25 +38,27 @@ Anything read only when working on one area is a guide, with a one-line claim an
 
 ## Skills
 
-Two skills live in `.github/skills/`: `test` installs this branch's build into the live app under a
-mutex and drives it, and `ship` lands the change on `origin/main`. Open and follow the matching one
-before doing either — the `Skill` tool does not load that directory, so asking for one by name only
-reports that no such skill exists.
+[`test`](.github/skills/test/SKILL.md) installs this branch's build into the live app under a mutex
+and drives it; [`ship`](.github/skills/ship/SKILL.md) lands the change on `origin/main`. Open and
+follow the matching file before doing either — the `Skill` tool does not load `.github/skills/`, so
+asking for one by name only reports that no such skill exists.
 
-**A change the user would see or touch gets `test` without being asked.** A clean compile is not a
-place to hand back: nothing is on their machine until `test` puts it there. `ship` is the opposite,
-and runs only when the user asks for it or a skill they invoked ends in it.
+**A change the user would see or touch gets `test` without being asked.** There is no test suite and
+no lint, so a compile gates nothing and is not a place to hand back: nothing is on the user's machine
+until `test` puts it there. `ship` is the opposite, and runs only when the user asks for it or a skill
+they invoked ends in it.
 
-A skill describing a command its script does not have was clobbered, not left stale. `git log
---oneline -- <path>` finds the commit that added the command, and a later copy byte-identical to an
-older version confirms a wholesale revert: take the file back whole where nothing has touched it
-since, and reverse the bad commit's hunks with `git apply -R --3way` where something has.
+A skill describing a command its script does not have was clobbered, not left stale, and a copy
+byte-identical to an older version is a wholesale revert. `git log --oneline -- <path>` finds the
+commit that added the command: take the file back whole where nothing has touched it since, and
+reverse the bad commit's hunks with `git apply -R --3way` where something has.
 
 ## Layout
 
 | | |
 |---|---|
 | `axshot.swift` | everything: walk, filter, overlay, hotkeys, settings, CLI |
+| `README.md` | what a user reads: install, permission, the command line, tuning the filter |
 | `build.sh` | compiles, assembles `Axshot.app`, signs it, links `bin/axshot`, installs it; `--no-install` stops before the install |
 | `create-signing-cert.sh` | creates the signing identity once; idempotent |
 | `scripts/axshot-test-lock.sh` | the mutex over the installed app and the keyboard, and the queue for it |
@@ -70,8 +74,11 @@ asking the bundle ([permissions.md](docs/permissions.md#one-binary-two-identitie
 There is one installed app, `/Applications/Axshot.app`. Its grants belong to the signature and the
 bundle identifier rather than the path, so what is genuinely single is the running instance, which
 owns the global hotkeys, and the login item, which names one bundle path. `build.sh` installs through
-the lock script, which refuses while another session holds the lock; a session that wants a held lock
-queues with `wait`, and parallel worktrees test in the order they arrived.
+the lock script, which refuses while *another* session holds the lock; a session that wants a held
+lock queues with `wait`, and parallel worktrees test in the order they arrived. Nothing refuses an
+install when no lock is held at all, so a `build.sh` run before acquiring puts this branch in
+`/Applications` outside the lock and the acquire that follows snapshots that rather than the app the
+user had: take the lock first, or pass `--no-install`.
 
 ## Driving the app on a live machine
 
@@ -102,9 +109,10 @@ never reaches `🔒 `, `📦 ` or `🚀 `: it ends parked at `🚙 `.
 The prefix glossary arrives in every session from the `emotive` plugin, and nothing here repeats it.
 These are the rows this repo can state exactly.
 
-- `📦 ` means driven through the `test` skill — this branch's build in the live slot, a capture taken
-  through the hotkey. There is no test suite and no lint, and `./build.sh --no-install` ending in
-  `signed by Axshot Local Signing` proves a compile rather than a gate.
+- `📦 ` means this branch has *been* driven through the `test` skill — its build in the live slot, a
+  capture taken through the hotkey — and survives the release that puts the user's app back.
+  `./build.sh --no-install` ending in `signed by Axshot Local Signing` is a compile and not that gate
+  ("Skills" above).
 - `🚀 ` ships to `origin/main`, squashed and fast-forwarded with no PR; the `ship` skill is that
   procedure and sets the prefix itself, once the push lands. `📦 ` holds until then.
 - `🚙 ` is what this repo waits on the user for: a decision, or a hands-on look at an installed
@@ -114,10 +122,11 @@ These are the rows this repo can state exactly.
   sessions contend for.
 
 `🔒 ` and `🔓 ` are that lock — `scripts/axshot-test-lock.sh`, over the one installed app and the one
-keyboard. `🔓 ` covers a session about to acquire, one queued or blocked behind another, and one that
-has just released; `🔒 ` means the installed app is this branch's build right now, so another session
-queues rather than installing over it. The `test` skill sets both around its own acquire and release,
-not the response, and `status` prints the title its holder passed to `wait` rather than the live one.
+keyboard. `🔓 ` covers a session about to acquire, one queued or blocked behind another, and one in
+the act of releasing — the stage after the release replaces it at once. `🔒 ` means the installed app
+is this branch's build right now, so another session queues rather than installing over it. The
+`test` skill sets both around its own acquire and release, not the response, and `status` prints the
+title its holder passed to `wait` rather than the live one.
 
 The worktree-and-lock workflow these sit in came from the sibling `karabiner` repo, whose
 `docs/workflow.md` holds the reasoning when a convention here reads as thinner than it should.

@@ -18,11 +18,11 @@ the pull request it asks for. The clone is ephemeral, so anything not committed 
 with the container.
 
 Then, at the point the `test` skill would have been invoked, queue a handoff task card
-(`spawn_task`) for a session on the user's machine, and park at `🚙 `. That card opens a session with
-none of this conversation, so its prompt stands on its own: the branch to fetch, what changed and
-where, the checks in the order they would fail, which assumptions were never verified and the
-fallback if one is wrong, and that fixes go to the same branch and pull request rather than a new
-one.
+(`spawn_task`, or the pull request body where the harness offers no such tool) for a session on the
+user's machine, and park at `🚙 `. That card opens a session with none of this conversation, so its
+prompt stands on its own: the branch to fetch, what changed and where, the checks in the order they
+would fail, which assumptions were never verified and the fallback if one is wrong, and that fixes go
+to the same branch and pull request rather than a new one.
 
 Say it is untested everywhere it will be read later — in the response, in the pull request body, and
 in a line of its own in the commit body, the convention step 2 of `ship` carries. That the code never
