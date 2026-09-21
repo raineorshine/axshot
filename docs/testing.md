@@ -120,6 +120,14 @@ machine state rather than a pure function of its arguments:
   within a turn the second is an order-out waiting on the run loop; gone only after a stretch of turns
   is an animation. A clear non-activating panel configured like the window in question draws nothing
   and takes no focus, so the probe needs neither the lock nor the idle gate.
+- **A question about a grant needs a bundle, and it cannot live in the scratchpad.** LaunchServices
+  registers nothing under `/private/tmp`, so TCC has no row to resolve, the app never appears in the
+  list, and `tccutil` answers `No such bundle identifier`. Worse, a request made from there is
+  recorded as asked: every later request returns false with no dialog and no row, including after the
+  app is moved somewhere real. Build the throwaway into `/Applications` with a bundle identifier of
+  its own, and if it ever ran from the scratchpad, `tccutil reset <service> <bundle-id>` before
+  believing anything it says. Asking what *axshot* has is the other case, and takes axshot's identity
+  rather than a bundle id of its own — [permissions.md](permissions.md#one-binary-two-identities).
 
 ## Asking who the process is
 

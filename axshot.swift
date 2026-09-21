@@ -583,11 +583,15 @@
 // monitor: the only one of the three that reserves the chord system-wide, so the frontmost app
 // never sees it, and the only one that needs no permission at all.
 //
-// Permission. Accessibility, for the tree and the hint tap; Screen Recording, for the capture.
-// Neither is asked for at launch: the settings window says which is missing and its buttons are what
-// ask, so starting the app, including at login, puts nothing on screen. Asking at the first press
-// instead would draw the dialog underneath the overlay, and an ungranted screencapture(1) fails with
-// nothing more useful than "could not create image".
+// Permission. Three grants, not the two the settings window lists: Accessibility for the tree,
+// Screen Recording for the capture, and Input Monitoring for the hint tap. The third has no row
+// because nothing here can ask for it usefully -- macOS puts up its own dialog the first time a tap
+// fails, and CGPreflightListenEventAccess caches its denial, so a row would read "Not granted" over
+// a working app. The two that do have rows are not asked for at launch: the window says which is
+// missing and its buttons are what ask, so starting the app, including at login, puts nothing on
+// screen. Asking at the first press instead would draw the dialog underneath the overlay, and an
+// ungranted screencapture(1) fails with nothing more useful than "could not create image". All three
+// reach a running process the second they are granted; there is nothing to relaunch for.
 //
 // A command line run re-spawns itself with its responsibility disclaimed, so TCC judges axshot
 // rather than the terminal that launched it and one pair of grants serves both the app and the
@@ -4271,6 +4275,9 @@ struct Outcome {
   /// The session was ended by Command-comma and the caller should open the settings window. Only
   /// the app has one; a command line run reads this as a plain cancel.
   var settings = false
+  /// What a person can do about this failure, where there is anything. The alert says this instead
+  /// of `line`, which stays exactly what the command line prints.
+  var advice: String?
 }
 
 func millis(since start: Date) -> Int { Int(Date().timeIntervalSince(start) * 1000) }
@@ -4446,7 +4453,16 @@ func runSession(_ options: Options) -> Outcome {
     userInfo: nil)
   else {
     overlay.orderOut(nil)
-    return Outcome(code: 2, line: "windows=\(targets.count) tap=failed total_ms=\(millis(since: start))")
+    // Input Monitoring, a third grant nothing here asks for: macOS puts up its own "receive
+    // keystrokes" dialog the first time this fails and adds axshot to the list, so the only thing
+    // missing is a sentence saying that the dialog and this alert are about the same thing. The
+    // grant lands live, so pressing the hotkey again is the whole of the fix.
+    return Outcome(
+      code: 2, line: "windows=\(targets.count) tap=failed total_ms=\(millis(since: start))",
+      advice: """
+        macOS is asking whether Axshot may receive keystrokes. Allow it under Privacy & Security \u{2192} \
+        Input Monitoring, then press the shortcut again -- it takes effect straight away.
+        """)
   }
   let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
   CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
@@ -4811,8 +4827,9 @@ enum Permissions {
     process.waitUntilExit()
   }
 
-  /// The system dialog, which also puts axshot in the right list in System Settings. Granting
-  /// Accessibility does not take effect until relaunch, which is why the button says so.
+  /// The system dialog, which also puts axshot in the right list in System Settings. Both grants
+  /// reach this process the moment the switch is flipped, measured a second apart in a run that
+  /// started denied, so there is nothing to relaunch for ([permissions.md](docs/permissions.md)).
   func request() {
     switch self {
     case .accessibility:
@@ -5100,6 +5117,9 @@ final class SettingsWindow: NSWindowController {
   private var rows: NSStackView!
   private var swatches: [SwatchView] = []
   private var permissionRows: [(Permissions, NSTextField, NSButton)] = []
+  /// Where the system dialog went. Shown only while a Grant button is there to raise one.
+  private let spaces = NSTextField(
+    labelWithString: "Grant… opens a macOS dialog. If none appears, check your other Spaces.")
   private var permissionTimer: Timer?
   /// When each permission was last asked for, so a request that visibly did nothing can offer the
   /// stale-record escape rather than repeating itself.
@@ -5229,8 +5249,9 @@ final class SettingsWindow: NSWindowController {
     launch.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
     var permissionViews: [NSView] = [separator()]
-    let spaces = NSTextField(labelWithString: "If no dialog appears, check your other Spaces — macOS opens it wherever it likes.")
     spaces.font = .systemFont(ofSize: 11)
+    spaces.lineBreakMode = .byWordWrapping
+    spaces.maximumNumberOfLines = 2
     // Secondary rather than tertiary. Tertiary is the colour of something switched off, and at 11pt
     // it comes to 1.9:1 on a white window -- which is fine for a placeholder and not for the line
     // that says where the dialog went. Still the quietest thing in the window, and now readable.
@@ -5257,15 +5278,8 @@ final class SettingsWindow: NSWindowController {
       permissionViews.append(row)
     }
 
-    let relaunch = PointerButton(title: "Relaunch", target: self, action: #selector(relaunchApp))
-    relaunch.toolTip = "Accessibility only takes effect after a restart."
-    relaunch.setAccessibilityName("Relaunch Axshot")
-    let relaunchRow = NSStackView(views: [NSTextField(labelWithString: "After granting Accessibility"), relaunch])
-    relaunchRow.orientation = .horizontal
-    relaunchRow.spacing = 12
-
     let stack = NSStackView(
-      views: [hotKeyRow, styleRow, themeRow, folderRow, launch] + permissionViews + [spaces, relaunchRow, status])
+      views: [hotKeyRow, styleRow, themeRow, folderRow, launch] + permissionViews + [spaces, status])
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 14
@@ -5284,6 +5298,7 @@ final class SettingsWindow: NSWindowController {
       stack.topAnchor.constraint(equalTo: container.topAnchor),
       stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
       status.widthAnchor.constraint(equalToConstant: 456),
+      spaces.widthAnchor.constraint(equalToConstant: 456),
     ])
     fit()
     window.center()
@@ -5358,6 +5373,13 @@ final class SettingsWindow: NSWindowController {
       let stale = (askedAt[button.tag].map { Date().timeIntervalSince($0) > 8 } ?? false)
       button.title = stale ? "Reset & ask again" : "Grant…"
     }
+    // An aside about a dialog, under two rows that say Granted and offer no button to open one,
+    // reads as a warning about nothing. It goes with the last button, and the window closes up.
+    let hidden = Permissions.allGranted
+    if spaces.isHidden != hidden {
+      spaces.isHidden = hidden
+      fit()
+    }
   }
 
   @objc private func grant(_ sender: NSButton) {
@@ -5369,17 +5391,6 @@ final class SettingsWindow: NSWindowController {
     // pane itself in front too.
     permission.openSettingsPane()
     refreshPermissions()
-  }
-
-  /// Accessibility is decided for a process when it starts, so a grant made while axshot is running
-  /// does nothing until it runs again.
-  @objc private func relaunchApp() {
-    let path = Bundle.main.bundleURL.path
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
-    process.arguments = ["-c", "sleep 1; open -n \"$0\"", path]
-    try? process.run()
-    NSApp.terminate(nil)
   }
 
   private func apply(_ chord: Chord) {
@@ -5884,7 +5895,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let alert = NSAlert()
     alert.messageText = "Axshot could not capture that."
-    alert.informativeText = outcome.line
+    alert.informativeText = outcome.advice ?? outcome.line
     alert.alertStyle = .warning
     NSApp.activate(ignoringOtherApps: true)
     alert.runModal()

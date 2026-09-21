@@ -240,14 +240,18 @@ in [docs/](docs/).
 
 ## Permission
 
-Two grants, both keyed to the binary's signature:
+Three grants, all keyed to the binary's signature:
 
-- **Accessibility** — the tree walk and the key-reading event tap.
+- **Accessibility** — the tree walk.
 - **Screen Recording** — the capture.
+- **Input Monitoring** — the key-reading event tap. macOS asks for this one itself, the first time
+  you press the shortcut: the capture fails, its dialog appears, and the next press works.
 
-Neither is asked for at launch. The Settings window shows what is missing and its buttons are what
-ask, so starting the app — including at login — puts nothing on screen. Accessibility takes effect
-only after a relaunch; Screen Recording takes effect at once.
+None of them is asked for at launch. The Settings window shows which of the first two is missing and
+its buttons are what ask, so starting the app — including at login — puts nothing on screen.
+
+**A grant takes effect immediately.** All three reach the running app within a second of the switch
+being flipped, measured. Nothing here needs a relaunch.
 
 Two things that cost an hour once:
 

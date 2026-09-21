@@ -109,9 +109,12 @@ putting the first prefix on is part of the first response.
 
 | | |
 |---|---|
+| `🎨 ` | brainstorming or designing with the user — exploring, sketching, deciding what to build |
 | `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
+| `🔍 ` | auditing against live state — a dry run, or the plan it printed, with a write to follow |
 | `🔓 ` | about to take the lock — including queued and blocked on it — or just released it |
 | `🔒 ` | holding the lock; the installed app is this branch's build |
+| `💾 ` | writing to a live resource every session shares |
 | `📦 ` | tested, and shippable without re-testing |
 | `🚀 ` | shipping, and shipped — it stays until the session starts something else |
 | `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a look at a build already in front of them |
@@ -119,9 +122,18 @@ putting the first prefix on is part of the first response.
 | `🪦 ` | dead end — kept for the findings, not to resume |
 | `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
 
+`🔍 ` and `💾 ` are inert here — there is no live account or database behind this app; the lock
+is what sessions contend for. They are listed so the vocabulary reads the same in every repo.
+
+**A design loop is not a park.** `🎨 ` holds through brainstorming and outranks `🚙 ` while it
+does: the back-and-forth _is_ the stage, so a park prefix on every turn of it marks the session as
+blocked without saying on what. It becomes `🚙 ` once the design is settled and waiting on a
+decision, and `⏳ ` when that decision comes.
+
 Set a prefix when the stage *starts*, not when it succeeds, and correct it if the stage falls over.
 `📚 ` goes on the moment a `learn` skill is invoked, before anything is read. The skills set the lock
-and ship prefixes; the rest are set by hand, and nothing reconciles a title against reality.
+and ship prefixes; the rest are set in the response that enters the stage, and nothing reconciles a
+title against reality.
 
 A response that closes on something for the user to do — test it, look at it, decide — is a park, and
 `🚙 ` goes on before it. A hands-on look at an installed build is the exception: the lock is held for as

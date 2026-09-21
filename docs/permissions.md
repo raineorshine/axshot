@@ -1,7 +1,7 @@
 # Permissions
 
-Axshot needs Accessibility and Screen Recording. Getting them granted is the roughest part of first
-use, and almost all of the roughness is TCC's, not the app's. [The README](../README.md#permission)
+Axshot needs Accessibility, Screen Recording and Input Monitoring. Getting them granted is the
+roughest part of first use, and almost all of the roughness is TCC's, not the app's. [The README](../README.md#permission)
 says what a user does; this says what a maintainer needs to know before touching anything that
 changes the app's identity.
 
@@ -47,7 +47,7 @@ same bytes, and not the same identity to everything that asks:
 [Asking who the process is](testing.md#asking-who-the-process-is) is how to see which identity a run
 picked up.
 
-## Three ways granting looks like it failed when it did not
+## Two ways granting looks like it failed when it did not
 
 - **The dialog opened on another Space.** macOS puts it where it likes. Nothing appears to happen,
   the request returns false, and the app stays denied — because nobody answered it.
@@ -55,11 +55,50 @@ picked up.
   a different signature, so its stored requirement no longer matches. There is no API that
   distinguishes this from never having been asked, which is why the settings window offers
   "Reset & ask again" once a request has visibly failed rather than trying to detect it.
-- **Accessibility was granted while the app was running.** Trust is decided for a process when it
-  starts. Relaunch. Screen Recording, by contrast, applies at once.
 
 `tccutil reset <service> <bundle-id>` clears a record so it can be asked for cleanly. It is the only
 escape from the second case, and it is what the app's own reset button runs.
+
+## A grant takes effect immediately
+
+**There is nothing to relaunch for.** Measured with a throwaway app of its own bundle identifier,
+polling once a second while a switch was flipped under it:
+
+| | |
+|---|---|
+| Accessibility | denied at launch; one second after the switch, `AXIsProcessTrusted()` true and a real `AXUIElementCopyAttributeValue` read of another app's windows returning 0 |
+| Input Monitoring | denied for the first seven minutes of the same process; one second after the switch, `CGEvent.tapCreate` succeeding where it had failed every second before |
+
+The app used to carry a Relaunch button saying otherwise. It was wrong about both.
+
+Two traps come with this, and both are about believing an answer instead of trying the thing:
+
+- **`CGPreflightListenEventAccess()` caches its denial for the life of the process.** It went on
+  returning false on the same log lines where both taps were being created successfully. This is the
+  same trap as `CGPreflightScreenCaptureAccess()` below, and the same rule applies: let the attempt
+  decide. A permission row driven by that preflight would read "Not granted" over a working app.
+- **`com.apple.accessibility.api` covers Accessibility only, and arrives early.** It is the
+  distributed notification Hammerspoon observes, which is how its preferences window turns green
+  with no restart. It did not fire at all for the Input Monitoring change, and when it did fire it
+  was delivered in the same second that `AXIsProcessTrusted()` still answered false. An observer
+  must re-read rather than believe the state it wakes up with — which is why the settings window
+  polls at 1 Hz instead.
+
+## Input Monitoring, the third grant
+
+The hint tap is a keyboard `CGEvent.tapCreate`, and on this macOS Accessibility does not carry it:
+a process with Accessibility granted and Input Monitoring denied creates no keyboard tap, of either
+`.defaultTap` or `.listenOnly` kind.
+
+**Nothing in the app asks for it, and nothing should.** macOS puts up its own "would like to receive
+keystrokes" dialog the first time a tap fails, and adds axshot to the list by itself — confirmed by
+a probe that never called `CGRequestListenEventAccess` and was listed anyway. So the first capture
+on a fresh machine fails once, the dialog explains why, and the next press works. What the app owes
+that moment is a sentence rather than a row: the failure alert says what the dialog is about and
+that pressing the shortcut again is the whole fix.
+
+It is also why the settings window lists two grants and the app needs three. A row for the third
+could not be drawn honestly without creating a throwaway tap every second, since the preflight lies.
 
 ## Asking for Screen Recording
 
