@@ -19,10 +19,7 @@ session pushed. Pushing from the worktree keeps shipping independent of the main
 
 ## Procedure
 
-### 0. Prefix the title with 🚀, then release the test lock
-
-Put `🚀 ` on the title now, before any of the work (AGENTS.md "Session titles"); step 7 corrects it if
-the ship does not land.
+### 0. Release the test lock
 
 ```bash
 ./scripts/axshot-test-lock.sh release --if-mine
@@ -102,7 +99,7 @@ and correct what the fix made untrue in the same ship.
 
 Re-run `./build.sh --no-install` after any rebase that brought code in: step 1 signed off on a
 different tree, and resolving a conflict is the one moment in this procedure where a person writes
-Swift. Re-testing takes the lock again — `🔒 ` while it is held, `🚀 ` once it is released.
+Swift. Re-testing takes the lock again — `🔒 ` while it is held, `📦 ` once it is released.
 
 Already on `main` in the main checkout: skip the rebase and step 4, but not the fetch —
 `git pull --ff-only`, commit, and go straight to step 5. Skipping the pull only moves the collision to
@@ -161,12 +158,13 @@ ref to whoever resets it:
 ./build.sh
 ```
 
-### 7. Correct the title if the ship did not land
+### 7. Put `🚀 ` on the title
 
-The push in step 5 is what counts as shipped, whatever step 6 managed; `🚀 ` then stays through the
-report and after it, until the session starts something else. If the push failed, or the ship was
-abandoned before it, set the prefix that is true now: `📦 ` for a tested branch, otherwise `⏳ ` to keep
-working or `🚙 ` if it waits on the user.
+The push in step 5 is what counts as shipped, whatever step 6 managed, so the prefix goes on here and
+not at the start (AGENTS.md "Session titles"). Until then the title keeps what was already true —
+usually `📦 `, which holds right through a ship that is rebasing, re-testing or retrying a rejected
+push. Nothing needs restoring if the ship falls over, since it was never set. Once on, `🚀 ` stays
+until the session starts something else. Say nothing about it in the response.
 
 ### 8. Post-ship
 

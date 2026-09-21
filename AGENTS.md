@@ -99,57 +99,25 @@ never reaches `🔒 `, `📦 ` or `🚀 `: it ends parked at `🚙 `.
 
 ## Session titles
 
-A lifecycle prefix on the session title says what the session is doing while it is doing it, so the
-sidebar answers "which chat holds the lock" without opening any of them. One prefix at a time, replaced
-rather than stacked, and never mentioned in a response.
+The prefix glossary arrives in every session from the `emotive` plugin, and nothing here repeats it.
+These are the rows this repo can state exactly.
 
-Every title carries one, and a prefix comes off only when another replaces it — a session with nothing
-left to do keeps the one for the last stage it reached. The harness names a session without one, so
-putting the first prefix on is part of the first response.
+- `📦 ` means driven through the `test` skill — this branch's build in the live slot, a capture taken
+  through the hotkey. There is no test suite and no lint, and `./build.sh --no-install` ending in
+  `signed by Axshot Local Signing` proves a compile rather than a gate.
+- `🚀 ` ships to `origin/main`, squashed and fast-forwarded with no PR; the `ship` skill is that
+  procedure and sets the prefix itself, once the push lands. `📦 ` holds until then.
+- `🚙 ` is what this repo waits on the user for: a decision, or a hands-on look at an installed
+  build. That look is the exception — the lock is held for as long as they look, so it stays `🔒 `
+  until there is nothing left to hold.
+- `💾 ` and `🔍 ` are inert here: no live account or database sits behind this app. The lock is what
+  sessions contend for.
 
-| | |
-|---|---|
-| `🎨 ` | brainstorming or designing with the user — exploring, sketching, deciding what to build |
-| `⏳ ` | implementing — the weakest of them; every other prefix takes precedence |
-| `🔍 ` | auditing against live state — a dry run, or the plan it printed, with a write to follow |
-| `🔓 ` | about to take the lock — including queued and blocked on it — or just released it |
-| `🔒 ` | holding the lock; the installed app is this branch's build |
-| `💾 ` | writing to a live resource every session shares |
-| `📦 ` | tested, and shippable without re-testing |
-| `🚀 ` | shipping, and shipped — it stays until the session starts something else |
-| `🚙 ` | parked: the work is sound and waiting on the user — a decision, or a look at a build already in front of them |
-| `⏲️ ` | waiting on a task scheduled for later — nothing to do until it fires |
-| `🪦 ` | dead end — kept for the findings, not to resume |
-| `📚 ` | extracting learnings into `AGENTS.md`, `docs/` or the skills |
+`🔒 ` and `🔓 ` are that lock — `scripts/axshot-test-lock.sh`, over the one installed app and the one
+keyboard. `🔓 ` covers a session about to acquire, one queued or blocked behind another, and one that
+has just released; `🔒 ` means the installed app is this branch's build right now, so another session
+queues rather than installing over it. The `test` skill sets both around its own acquire and release,
+not the response, and `status` prints the title its holder passed to `wait` rather than the live one.
 
-`🔍 ` and `💾 ` are inert here — there is no live account or database behind this app; the lock
-is what sessions contend for. They are listed so the vocabulary reads the same in every repo.
-
-**A design loop is not a park.** `🎨 ` holds through brainstorming and outranks `🚙 ` while it
-does: the back-and-forth _is_ the stage, so a park prefix on every turn of it marks the session as
-blocked without saying on what. It becomes `🚙 ` once the design is settled and waiting on a
-decision, and `⏳ ` when that decision comes.
-
-Set a prefix when the stage *starts*, not when it succeeds, and correct it if the stage falls over.
-`📚 ` goes on the moment a `learn` skill is invoked, before anything is read. The skills set the lock
-and ship prefixes; the rest are set in the response that enters the stage, and nothing reconciles a
-title against reality.
-
-A response that closes on something for the user to do — test it, look at it, decide — is a park, and
-`🚙 ` goes on before it. A hands-on look at an installed build is the exception: the lock is held for as
-long as they look, so it stays `🔒 ` until there is nothing left to hold.
-
-Waiting on the clock is a stage of its own. `⏲️ ` is for a session whose next move is a task
-scheduled for later — a wake-up, a cron run, a routine — with nothing to do until it fires. Where
-that response also needs something from the user it is a park: `🚙 ` takes precedence, since a
-person can act and the clock cannot. A held lock outranks both.
-
-**Ask which session this is before renaming one.** `get_session "self"` is the only answer, and a fork
-changes it: a forked session carries the transcript, including the id read earlier in it, under a new
-id of its own — so reusing the remembered id retitles the session it forked from, generally the one
-still holding the lock. A fork also starts in its parent's worktree, and checking a branch out there
-moves that worktree under the other session; put it back on its original branch once the work is
-landed.
-
-The vocabulary, and the worktree-and-lock workflow around it, came from the sibling `karabiner` repo,
-whose `docs/workflow.md` holds the reasoning when a convention here reads as thinner than it should.
+The worktree-and-lock workflow these sit in came from the sibling `karabiner` repo, whose
+`docs/workflow.md` holds the reasoning when a convention here reads as thinner than it should.
