@@ -13,7 +13,15 @@
 #
 # The pre-test bundle is snapshotted inside the lock, so release puts back
 # byte-exactly whatever was installed before -- committed or not -- and a lock
-# abandoned by a dead session is still recoverable by `break`.
+# left behind by a dead session is still recoverable by `break`.
+#
+# Age is not abandonment. The ordinary long hold is a build put in the slot for
+# the user to try and a user who has gone to bed, so nothing here expires:
+# `status` reports the age and draws no conclusion from it, `break` refuses
+# without the user's word however old the lock is, and a `wait` keeps its place
+# until the lock is released rather than giving the queue up overnight. The
+# queue moves when the user comes back, tries what is in the slot, and the
+# holder releases.
 #
 # Whether the app was running is recorded too. A test must not end with the
 # user's menu bar app missing, or with a stray instance holding their hotkeys.
@@ -27,17 +35,24 @@
 #                     until it is. No polling and no loop to write: the release
 #                     wakes the oldest waiter through a fifo. Run it in the
 #                     background and the session is told the moment it holds the
-#                     lock; interrupting it leaves the queue. It is bounded:
-#                     after $AXSHOT_WAIT_STALE (30m) it gives up and reports
-#                     what it was waiting on, whatever the reason.
+#                     lock; interrupting it leaves the queue. It does not give
+#                     up: a holder asleep is still a holder, and a wait that
+#                     expired would cost its place in a queue that is about to
+#                     move. It sleeps on the fifo and not on a poll, and the
+#                     backstop nap behind that doubles from $AXSHOT_WAIT_FLOOR
+#                     (15s) to $AXSHOT_WAIT_CEILING (30m), so a night of waiting
+#                     costs a few dozen looks. $AXSHOT_WAIT_TIMEOUT bounds the
+#                     whole wait for a harness that cannot block indefinitely;
+#                     a session sets no bound.
 #   install <app>     replace the live app with this build and relaunch it;
 #                     refused while another session holds the lock
 #   release           restore the snapshot and drop the lock
 #                     --keep     drop the lock, leave the live app as it is
 #                     --force    restore even if the live app changed
 #                     --if-mine  no-op unless this session took the lock
-#   status            who holds it, since when, whether stale, who is queued
-#   break             force-release a lock left behind by a dead session
+#   status            who holds it, since when, and who is queued behind it
+#   break --confirmed force-release a lock, only ever after the user has said
+#                     nobody is mid-test -- no age says that on its own
 #   dequeue           clear the queue; the recovery for a ticket that cannot be
 #                     pruned, which `break` does not touch
 # The handoff is only as good as the holder's copy of this script: a worktree on
@@ -53,11 +68,22 @@ BACKUP="$LOCK/Axshot.app.pre"
 # Outside the lock directory, which release deletes: the queue has to outlive
 # the handoff it exists to order.
 QUEUE="$ROOT/.claude/axshot-test.queue"
-STALE_SECONDS=${AXSHOT_LOCK_STALE:-1800}
-# How long a `wait` waits before giving up. Its own value, not STALE_SECONDS:
-# `break` documents AXSHOT_LOCK_STALE=0 for forcing a live lock open, and a
-# shell that exports that must not turn every wait into an instant refusal.
-WAIT_STALE=${AXSHOT_WAIT_STALE:-1800}
+# The backstop nap, which doubles from the floor to the ceiling and stays
+# there. Not a deadline and not a poll: a release wakes the head of the queue
+# through its fifo, and this only bounds what a wake that reached nobody costs.
+# The curve is why the two knobs are a floor and a ceiling rather than one
+# interval -- a handoff missed in the first minutes is found in seconds, while a
+# wait that has already run for hours is looking a couple of times an hour, and
+# the number of looks over a whole night grows with the log of its length. The
+# floor comes back the moment the fifo wakes this waiter early, since a queue
+# that is moving is worth watching closely again.
+WAIT_FLOOR=${AXSHOT_WAIT_FLOOR:-15}
+WAIT_CEILING=${AXSHOT_WAIT_CEILING:-1800}
+# Unset, a `wait` waits for as long as the lock is held. A number of seconds
+# bounds it, which is for a harness exercising this script rather than for a
+# session: a bounded wait in a real chat is a place in the queue given up in
+# the hours before the user comes back to release the lock.
+WAIT_TIMEOUT=${AXSHOT_WAIT_TIMEOUT:-0}
 APP_PROCESS="Axshot.app/Contents/MacOS/axshot"
 
 SELF=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -76,13 +102,27 @@ age() {
   held=$(cat "$LOCK/acquired" 2>/dev/null || printf '%s' "$now")
   printf '%s' $(( now - held ))
 }
+# The age in words, and the clock time the lock was taken. Both, because they
+# answer different questions -- how long the slot has been spoken for, and
+# whether that was before the user stopped for the night -- and neither is a
+# verdict.
+age_words() {
+  secs=$(age)
+  if [ "$secs" -ge 3600 ]; then printf '%sh %sm' "$(( secs / 3600 ))" "$(( secs % 3600 / 60 ))"
+  else printf '%sm' "$(( secs / 60 ))"; fi
+}
+taken_at() {
+  t=$(cat "$LOCK/acquired" 2>/dev/null || printf '')
+  [ -n "$t" ] || { printf '(unknown)'; return 0; }
+  date -r "$t" '+%a %H:%M' 2>/dev/null || date -d "@$t" '+%a %H:%M' 2>/dev/null || printf '(unknown)'
+}
 holder_report() {
   printf 'held by   %s\n' "$(field label)"
   printf 'session   %s\n' "$(field session)"
   if [ -s "$LOCK/session_id" ]; then printf 'session id %s\n' "$(field session_id)"; fi
   printf 'worktree  %s\n' "$(field worktree)"
   printf 'branch    %s\n' "$(field branch)"
-  printf 'age       %sm (stale after %sm)\n' "$(( $(age) / 60 ))" "$(( STALE_SECONDS / 60 ))"
+  printf 'age       %s (taken %s)\n' "$(age_words)" "$(taken_at)"
 }
 # The worktree says who owns the lock, and when both sides know their session
 # it has to be the same session too: two chats can share a worktree, and one of
@@ -93,10 +133,6 @@ owned() {
   [ -n "$SESSION_ID" ] && [ -s "$LOCK/session_id" ] || return 0
   [ "$(field session_id)" = "$SESSION_ID" ]
 }
-# STALE_SECONDS=0 means "treat any lock as abandoned" -- the documented override
-# for breaking a live lock once the user has confirmed nobody is mid-test.
-is_stale() { [ "$(age)" -ge "$STALE_SECONDS" ]; }
-
 app_running() { pgrep -f "$APP_PROCESS" >/dev/null 2>&1; }
 
 
@@ -185,9 +221,9 @@ take_lock() {
   # long part of this. A lock interrupted mid-copy is then still one its owner
   # can release and one that ages into `break`'s reach, rather than an
   # anonymous directory that wedges the queue behind it for good. The time is
-  # read here, not when the script started: a `wait` reaches this as much as
-  # $AXSHOT_WAIT_STALE later, and a lock stamped with the start of the wait
-  # would be handed over already stale.
+  # read here, not when the script started: a `wait` can reach this hours
+  # later, and a lock stamped with the start of the wait would report an age
+  # that is really the waiting session's.
   printf '%s\n' "$SELF" > "$LOCK/worktree"
   printf '%s\n' "$(date +%s)" > "$LOCK/acquired"
   printf '%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '(detached)')" > "$LOCK/branch"
@@ -256,7 +292,6 @@ case "$cmd" in
     if [ -d "$LOCK" ]; then
       printf 'LOCKED -- the session "%s" is testing.\n' "$(field session)" >&2
       holder_report >&2
-      is_stale && printf '\nLock is stale; `break` it after confirming with the user.\n' >&2
     else
       printf 'QUEUED AHEAD -- the lock is free but older waiters have it promised.\n' >&2
       queue_report >&2
@@ -323,15 +358,29 @@ case "$cmd" in
     [ -d "$LOCK" ] && holder_report >&2 || true
     queue_report >&2
 
-    # The wait is bounded, and one alarm is what makes the bound arrive. Every
-    # way this could hang -- a holder whose session died, a signal that reached
-    # nobody, a queue that stopped moving -- ends here instead of in a session
-    # parked for good. Killing the waiter outright leaves the alarm to sleep out
-    # its interval; it holds nothing, and a stray `sleep` afterwards is this.
-    DEADLINE=$(( $(date +%s) + WAIT_STALE ))
-    ( exec 3<&-; sleep "$WAIT_STALE"; printf 'go\n' 1<>"$TICKET/fifo" ) & ALARM=$!
+    # A deadline only where a harness asked for one. A session's wait has none:
+    # the queue exists to survive the night, and a waiter that exits has given
+    # its place to whoever asks next.
+    DEADLINE=0
+    nap=$WAIT_FLOOR
+    if [ "$WAIT_TIMEOUT" -le 0 ]; then
+      printf 'this wait does not expire -- #%s is held until the lock is released\n' "$TICKET_N" >&2
+    else
+      DEADLINE=$(( $(date +%s) + WAIT_TIMEOUT ))
+      printf 'bounded by AXSHOT_WAIT_TIMEOUT -- #%s is given up after %ss\n' "$TICKET_N" "$WAIT_TIMEOUT" >&2
+    fi
 
     while :; do
+      # Before the attempt, not after it: a wait that has run out must not walk
+      # off holding a lock that came free while it was asleep. Nobody is coming
+      # back to that session to release it.
+      if [ "$DEADLINE" -gt 0 ] && [ "$(date +%s)" -ge "$DEADLINE" ]; then
+        printf 'GAVE UP -- %ss at #%s in the queue, the bound AXSHOT_WAIT_TIMEOUT set.\n' \
+          "$WAIT_TIMEOUT" "$TICKET_N" >&2
+        [ -d "$LOCK" ] && holder_report >&2 \
+          || printf 'the lock is free and the queue is not moving\n' >&2
+        exit 1
+      fi
       had_lock=; [ -d "$LOCK" ] && had_lock=1 || true
       if take_lock "$LABEL" "$SESSION" "$TICKET_N.$$"; then
         # A cancelled wait must not walk off holding the lock it was handed: the
@@ -343,17 +392,22 @@ case "$cmd" in
         exit 130
       fi
       [ -z "$CANCEL" ] || exit 130
-      if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-        printf 'GAVE UP -- %sm at #%s in the queue.\n' "$(( WAIT_STALE / 60 ))" "$TICKET_N" >&2
-        [ -d "$LOCK" ] && holder_report >&2 \
-          || printf 'the lock is free and the queue is not moving\n' >&2
-        printf '\nTake it to the user: `%s status`, then `break` or `dequeue`.\n' "$0" >&2
-        exit 1
-      fi
       # `dequeue` cleared the queue: nothing will be written to this fifo again,
       # so say so rather than sleep on it for good.
       [ -p "$TICKET/fifo" ] && [ ! -e "$TICKET/cleared" ] \
         || die 'this ticket was cleared -- run `wait` again to requeue'
+      # Arm the backstop for this turn. `nap` carries the backoff across the
+      # loop; `armed` is what was actually asked for, which a deadline can cut
+      # short without that shortening counting as a step of the curve.
+      [ "$nap" -le "$WAIT_CEILING" ] || nap=$WAIT_CEILING
+      armed=$nap
+      if [ "$DEADLINE" -gt 0 ]; then
+        left=$(( DEADLINE - $(date +%s) ))
+        [ "$left" -ge "$armed" ] || armed=$left
+      fi
+      [ "$armed" -gt 0 ] || armed=1
+      slept_from=$(date +%s)
+      ( exec 3<&-; sleep "$armed"; printf 'go\n' 1<>"$TICKET/fifo" ) & ALARM=$!
       # Blocks in the kernel until a release hands this ticket the lock. A wake
       # is a prompt to try, not a promise: the loop re-checks and waits again.
       #
@@ -363,6 +417,20 @@ case "$cmd" in
       # waiter is killed outright.
       ( exec 3<&-; read _ < "$TICKET/fifo" ) & WAKE=$!
       wait "$WAKE" || true
+      # This turn is over however it ended, so the alarm goes. Killing the
+      # subshell leaves its `sleep` to run itself out holding nothing, which is
+      # what a stray `sleep` in the process list is.
+      kill $ALARM 2>/dev/null || true
+      ALARM=
+      # Which of the two woke it decides the next nap. Early is the fifo, so
+      # something moved and the floor is worth paying again; on time it is this
+      # waiter's own alarm finding the same lock still held, and the next look
+      # can cost half as often.
+      if [ "$(( $(date +%s) - slept_from ))" -lt "$armed" ]; then
+        nap=$WAIT_FLOOR
+      else
+        nap=$(( nap * 2 ))
+      fi
     done
     ;;
 
@@ -466,7 +534,10 @@ app alone with: $0 release --keep"
     if [ -d "$LOCK" ]; then
       owned && printf 'LOCKED by this worktree\n' || printf 'LOCKED by another session\n'
       holder_report
-      is_stale && printf 'STALE -- presumed abandoned\n'
+      # No verdict from the age, at any age. The long hold this reports is
+      # usually a build left in the slot for the user to try, waiting on hands
+      # that are asleep; it ends when they come back, not on a clock here.
+      printf 'age is not abandonment -- the holder may be waiting on the user\n'
     else
       printf 'unlocked\n'
     fi
@@ -476,13 +547,20 @@ app alone with: $0 release --keep"
 
   break)
     [ -d "$LOCK" ] || { printf 'no lock held\n'; exit 0; }
-    if ! is_stale; then
-      printf 'Lock is only %sm old and may still be in use:\n' "$(( $(age) / 60 ))" >&2
+    # No age is a sanction to break, so there is no age-gated path in here. The
+    # holder likeliest to look idle is the one waiting on the user's own look,
+    # and the user is the only one who knows whether that test is still theirs
+    # to finish -- so their word is the gate, and `--confirmed` is this session
+    # saying it has that word.
+    if [ "${2:-}" != --confirmed ]; then
+      printf 'REFUSED -- "%s" holds the live slot, and no age says otherwise:\n' "$(field session)" >&2
       holder_report >&2
-      printf 'Confirm with the user, then re-run with AXSHOT_LOCK_STALE=0.\n' >&2
+      printf '\nAsk the user whether that test is still theirs to finish; `wait` keeps a\n' >&2
+      printf 'place in the queue for as long as that takes. If they say to take it:\n' >&2
+      printf '  %s break --confirmed\n' "$0" >&2
       exit 1
     fi
-    # An abandoned lock may have left an overlay up, holding the keyboard now.
+    # A lock broken this way may have left an overlay up, holding the keyboard.
     if [ -d "$BACKUP" ] && [ ! -f "$LOCK/snapshot_ok" ]; then
       # Exactly the case this command exists for -- a session killed mid-acquire
       # -- and the one where its snapshot must not be trusted.
@@ -491,7 +569,7 @@ app alone with: $0 release --keep"
       quit_app
     elif [ -d "$BACKUP" ] && ! same_build "$BACKUP" "$LIVE"; then
       replace_live "$BACKUP" "$(field app_was_running)"
-      printf 'restored the abandoned snapshot\n'
+      printf 'restored the snapshot the lock recorded\n'
     else
       quit_app
     fi

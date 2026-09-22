@@ -66,8 +66,11 @@ The last line says how it ended:
   recorded whether it was running. Re-running from the same session is a no-op that keeps the
   snapshot, so an interrupted session can resume; a *second* session on the same worktree is queued
   like any other, not handed the first one's lock.
-- **`GAVE UP`** — the wait hit its half-hour bound. The report says what it was waiting on; that goes
-  to the user rather than being broken open here, and the session parks at `🚙 `.
+- **The wait does not expire**, so there is no giving-up line to read. The holder is usually parked
+  on the user's own look at an installed build, and a lock held for hours means the user is away —
+  asleep, most often — so the queue is what carries the handoff across that, and a wait that expired
+  would cost its place minutes before they come back and release. Cancelling the background task is
+  the only way out, and it leaves the queue.
 - **`this ticket was cleared`** — someone ran `dequeue`; run `wait` again to take a new place.
 
 While queued, the session stays `🔓 ` and says which session is ahead. Do the lock-free work meanwhile,
@@ -218,24 +221,27 @@ Release refuses rather than guess in two cases:
   silently, and whoever is queued sleeps through their turn until some other release signals. `status`
   showing the lock free with the queue still standing is this; rebase that worktree on main.
 
-## Stale locks
+## A lock held for hours
 
-`status` reports a lock older than 30 minutes as `STALE`, and that is the lock's age and nothing else.
-A holder at step 7 keeps the lock for as long as the user takes to look, which is routinely past half
-an hour, and breaking it pulls the build out from under their hands. Nor is the title `status` prints
-current — it is the one the holder passed to `wait`. Read the live one with the host's own session
-tool (`get_session` in the desktop app) and the session id `status` printed: `🔒 ` on a session that is
-not running is a hand-off waiting on the user, not an abandoned lock, and the answer is to queue
-behind it. With no such tool, treat a `🔒 ` holder as live and queue.
+**Age is not abandonment, at any age.** `status` prints how long the lock has been held and the clock
+time it was taken, and draws no conclusion from either. A holder at step 7 keeps the lock for as long
+as the user takes to look, which is routinely past the small hours, and breaking it pulls the build
+out from under their hands. Nor is the title `status` prints current — it is the one the holder passed
+to `wait`. Read the live one with the host's own session tool (`get_session` in the desktop app) and
+the session id `status` printed: `🔒 ` on a session that is not running is a hand-off waiting on the
+user, not an abandoned lock, and the answer is to queue behind it. With no such tool, treat a `🔒 `
+holder as live and queue.
 
-An abandoned lock is broken with its snapshot restored:
+So `break` is never something to reach for from the age alone. It refuses on its own, and takes the
+user's word that nobody is mid-test — restoring the snapshot first:
 
 ```bash
-./scripts/axshot-test-lock.sh break
+./scripts/axshot-test-lock.sh break --confirmed
 ```
 
-Breaking a lock that is *not* stale requires confirming with the user that no test is in flight, then
-`AXSHOT_LOCK_STALE=0 ./scripts/axshot-test-lock.sh break`. Never on a hunch — the holder is mid-test.
+Ask before running it, and say what it costs: the build the holder installed for the user goes away,
+and their session is left believing it still holds the lock. `wait` is the alternative that costs
+nothing — it keeps its place for as long as the process lives.
 
 `break` recovers the lock and not the queue. A ticket whose waiting session is gone is pruned on sight,
 but one whose recorded pid has been reused — across a reboot, say — looks alive forever, and while it
