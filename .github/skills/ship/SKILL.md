@@ -21,6 +21,15 @@ session pushed. Pushing from the worktree keeps shipping independent of the main
 
 ### 0. Release the test lock
 
+**Arriving with `🔒 `, swap the prefix to `📦 ` before releasing.** That is the ordinary path —
+`test` hands back with the build installed and the lock still held, and "ship" is the answer that
+hand-back was waiting for — so the release below is what makes the prefix false, and nothing before
+step 7 reads the title again. Left standing, it tells every other session the installed app is this
+branch's build for the whole ship: a second `🔒 ` in a sidebar where only one can be true, and one
+that stays wrong if the ship falls over short of step 7. `📦 ` is what is true instead, since a
+branch that came through `test` is built and tested. A `--if-mine` that releases nothing releases no
+prefix either — leave whatever is there. Do not report this. See AGENTS.md "Session titles".
+
 ```bash
 ./scripts/axshot-test-lock.sh release --if-mine
 ```

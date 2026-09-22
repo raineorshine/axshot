@@ -125,8 +125,10 @@ These are the rows this repo can state exactly.
 keyboard. `🔓 ` covers a session about to acquire, one queued or blocked behind another, and one in
 the act of releasing — the stage after the release replaces it at once. `🔒 ` means the installed app
 is this branch's build right now, so another session queues rather than installing over it. The
-`test` skill sets both around its own acquire and release, not the response, and `status` prints the
-title its holder passed to `wait` rather than the live one.
+skill that moves the lock sets both, not the response: `test` around its own acquire and release,
+and `ship` step 0 when its release is the one that drops the lock — a release that leaves the prefix
+standing puts a second holder in the sidebar. `status` prints the title its holder passed to `wait`
+rather than the live one.
 
 The worktree-and-lock workflow these sit in came from the sibling `karabiner` repo, whose
 `docs/workflow.md` holds the reasoning when a convention here reads as thinner than it should.
