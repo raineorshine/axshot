@@ -75,7 +75,8 @@ The last line says how it ended:
 
 While queued, the session stays `🔓 ` and says which session is ahead. Do the lock-free work meanwhile,
 but do not run a plain `build.sh`: it installs, and the install is what the lock exists to serialise.
-Cancelling the background task leaves the queue.
+Cancelling the background task leaves the queue. A wait whose turn came before the cancel holds the lock
+anyway (see Leaving without a ship).
 
 ### 3. Rebase on origin/main, then build and install
 
@@ -192,6 +193,21 @@ Release refuses rather than guess in two cases:
 ### 9. Ship
 
 `ship` runs when the user asks for it, and not before.
+
+### Leaving without a ship
+
+A session that stops short of shipping — its work handed to another session, dropped, or the title
+going to `🪦 ` — releases first, with the same `release`, and reads `status` afterwards: **`🪦 ` goes
+on only once `status` names another holder or none.** A tombstoned session is one nobody looks at
+again, so a lock it still holds stalls every session queued behind it until the user notices.
+
+- **A cancelled `wait` may already hold the lock.** Killing the waiting process ends the wait, not
+  a lock it acquired before the kill landed. Run `status` after cancelling, and release if this
+  session is the holder.
+- **The lock belongs to the worktree's path.** Release before removing the worktree. If it is
+  already gone, add a detached checkout back at the same path, release from there, and remove it
+  again. Where the release cannot restore what it found, it says so and names `--keep`, which drops
+  the lock and leaves the slot alone.
 
 ## Hazards
 
