@@ -44,7 +44,8 @@ about to put a build in the live slot.
 ./scripts/axshot-test-lock.sh status
 ```
 
-It prints the holder and everyone queued behind them.
+It prints the holder and everyone queued behind them, with a `link` line to the holder's session
+when it runs in the desktop app.
 
 ### 2. Acquire
 
@@ -73,7 +74,11 @@ The last line says how it ended:
   the only way out, and it leaves the queue.
 - **`this ticket was cleared`** — someone ran `dequeue`; run `wait` again to take a new place.
 
-While queued, the session stays `🔓 ` and says which session is ahead. Do the lock-free work meanwhile,
+While queued, the session stays `🔓 ` and says which session is ahead: **paste the `link` line the
+report printed, verbatim**, into the message that tells the user to wait — the desktop app renders it
+as a link that opens the holder's session. With no `link` line (a holder in a terminal, or a lock
+taken before the line existed), give the holder's title and worktree instead, and never build a link
+from an id that was not printed there. Do the lock-free work meanwhile,
 but do not run a plain `build.sh`: it installs, and the install is what the lock exists to serialise.
 Cancelling the background task leaves the queue. A wait whose turn came before the cancel holds the lock
 anyway (see Leaving without a ship).

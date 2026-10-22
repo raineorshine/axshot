@@ -175,6 +175,10 @@ directory and `AXSHOT_LIVE` at a stand-in bundle inside it — one with an execu
   `CLAUDE_CODE_HOST_SESSION_ID` — so a second "session" run from the same checkout is the holder, and
   its `wait` returns at once holding the lock it was meant to queue for. Run each from its own directory
   outside any git checkout, or give each an id of its own.
+- **The `link` line appears only for a `local_` session id.** Every report naming the holder —
+  `status`, a refused `acquire` or `install`, the `queued at #N behind:` a `wait` prints — carries it,
+  and a message telling the user to wait pastes it verbatim. A sandboxed holder run with
+  `CLAUDE_CODE_HOST_SESSION_ID` empty shows the terminal case: no `link`, title and worktree only.
 - **`AXSHOT_LIVE` scopes the files, not the processes.** Whether the app is running, and quitting it,
   go by a process pattern that matches the user's real app wherever the sandbox points. `install`,
   `break` and a restoring `release` can quit the real app and launch the stand-in in its place;

@@ -120,6 +120,12 @@ holder_report() {
   printf 'held by   %s\n' "$(field label)"
   printf 'session   %s\n' "$(field session)"
   if [ -s "$LOCK/session_id" ]; then printf 'session id %s\n' "$(field session_id)"; fi
+  # The desktop app renders `[title](#local_<uuid>)` as a link that opens that
+  # session, so the waiting session pastes this line and the user is one click
+  # from the holder. Only a desktop id makes one; anything else is a terminal.
+  case $(field session_id) in
+    local_*) printf 'link      [%s](#%s)\n' "$(field session)" "$(field session_id)" ;;
+  esac
   printf 'worktree  %s\n' "$(field worktree)"
   printf 'branch    %s\n' "$(field branch)"
   printf 'age       %s (taken %s)\n' "$(age_words)" "$(taken_at)"
